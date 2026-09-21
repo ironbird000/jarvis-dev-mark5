@@ -90,6 +90,9 @@ GENERIC_PERSON_LABELS = {"person", "face", "head", "human"}
 KNOWN_OBJECT_OVERRIDE_CONFIDENCE = 0.93
 TARGET_PRIORITY_MIN_CONFIDENCE = 0.2
 TARGET_PRIORITY_MIN_OVERLAP = 0.12
+FRAME_CAPTURE_MAX_RETRIES = 3
+FRAME_CAPTURE_RETRY_DELAY_SECONDS = 0.15
+FRAME_CAPTURE_MIN_DIMENSION = 48
 VISION_INTENT_LABELS = {
     "inspect_target": "Inspect target",
     "what_is_this": "What is this?",
@@ -230,7 +233,25 @@ class EyesService:
                 "browser_camera_device_id": "",
                 "browser_camera_label": "",
             }
-        return self.store.get_browser_camera_profile(int(user_id))
+        getter = getattr(self.store, "get_browser_camera_profile", None)
+        if callable(getter):
+            try:
+                profile = getter(int(user_id))
+            except Exception:
+                profile = None
+            if isinstance(profile, dict):
+                return {
+                    "browser_camera_enabled": int(bool(profile.get("browser_camera_enabled"))),
+                    "browser_camera_permission_state": profile.get("browser_camera_permission_state") or "prompt",
+                    "browser_camera_device_id": profile.get("browser_camera_device_id") or "",
+                    "browser_camera_label": profile.get("browser_camera_label") or "",
+                }
+        return {
+            "browser_camera_enabled": 0,
+            "browser_camera_permission_state": "prompt",
+            "browser_camera_device_id": "",
+            "browser_camera_label": "",
+        }
 
     def _is_admin_user(self, user_id: Optional[int]) -> bool:
         if not user_id:
@@ -323,6 +344,30 @@ class EyesService:
             permission_state=profile.get("browser_camera_permission_state") or "prompt",
             device_id=profile.get("browser_camera_device_id") or "",
         )
+
+    def _payload_browser_profile(self, payload: Optional[Dict], user_id: Optional[int]) -> Dict:
+        profile = dict(self._browser_profile(user_id))
+        payload = payload or {}
+        permission_state = str(payload.get("browser_camera_permission_state") or "").strip().lower()
+        device_id = str(payload.get("browser_camera_device_id") or "").strip()
+        label = str(payload.get("browser_camera_label") or "").strip()
+        if payload.get("image_base64") or payload.get("image_data_url"):
+            profile["browser_camera_enabled"] = 1
+            profile["browser_camera_permission_state"] = permission_state or "granted"
+            if device_id:
+                profile["browser_camera_device_id"] = device_id
+            if label:
+                profile["browser_camera_label"] = label
+        else:
+            if permission_state in {"granted", "prompt", "denied"}:
+                profile["browser_camera_permission_state"] = permission_state
+            if device_id:
+                profile["browser_camera_enabled"] = 1
+                profile["browser_camera_device_id"] = device_id
+            if label:
+                profile["browser_camera_enabled"] = 1
+                profile["browser_camera_label"] = label
+        return profile
 
     def _build_camera_descriptors(
         self,
@@ -864,7 +909,8 @@ class EyesService:
     def _resolve_camera(self, payload: Dict, for_ptz: bool = False) -> CameraDescriptor:
         user_id = payload.get("user_id")
         requested = (payload.get("camera_id") or "").strip().lower()
-        candidates = self._build_camera_descriptors(user_id, admin=self._payload_is_admin(payload))
+        profile = self._payload_browser_profile(payload, user_id)
+        candidates = self._build_camera_descriptors(user_id, admin=self._payload_is_admin(payload), profile=profile)
         browser_descriptor = next((item for item in candidates if item.camera_id == "browser"), None)
 
         if requested:
@@ -879,9 +925,16 @@ class EyesService:
         if payload.get("image_base64") or payload.get("image_data_url"):
             if browser_descriptor is not None:
                 return browser_descriptor
-            raise CameraAccessError(
-                "You are not authorized to inspect browser camera images for this account.",
+            return CameraDescriptor(
                 camera_id="browser",
+                label=profile.get("browser_camera_label") or "Browser Camera",
+                source_kind="browser",
+                source_ref=profile.get("browser_camera_device_id") or "browser",
+                browser=True,
+                available=True,
+                owner_user_id=int(user_id) if user_id else None,
+                permission_state=profile.get("browser_camera_permission_state") or "granted",
+                device_id=profile.get("browser_camera_device_id") or "",
             )
 
         if for_ptz:
@@ -907,7 +960,10 @@ class EyesService:
         return descriptor.camera_id
 
     def _persist_camera(self, descriptor: CameraDescriptor) -> int:
-        return self.store.upsert_camera_device(
+        upsert = getattr(self.store, "upsert_camera_device", None)
+        if not callable(upsert):
+            return 0
+        return upsert(
             camera_key=self._camera_key(descriptor),
             label=descriptor.label,
             source_kind=descriptor.source_kind,
@@ -923,14 +979,25 @@ class EyesService:
             is_available=descriptor.available,
         )
 
+    def _store_vision_observation(self, **kwargs) -> int:
+        writer = getattr(self.store, "add_vision_observation", None)
+        if not callable(writer):
+            return 0
+        try:
+            return int(writer(**kwargs) or 0)
+        except Exception:
+            logging.exception("Failed storing vision observation")
+            return 0
+
     def _list_cameras(self, payload: Dict) -> Dict:
         user_id = payload.get("user_id")
-        profile = self._browser_profile(user_id)
+        profile = self._payload_browser_profile(payload, user_id)
         is_admin = self._payload_is_admin(payload)
         descriptors = self._build_camera_descriptors(
             user_id,
             admin=is_admin,
             include_server_cameras=False,
+            profile=profile,
         )
         default_camera = self._default_camera_descriptor(descriptors, profile=profile)
         cameras = []
@@ -973,28 +1040,59 @@ class EyesService:
         }
 
     def _capture_from_source(self, source):
-        cap = cv2.VideoCapture(source)
+        for attempt in range(FRAME_CAPTURE_MAX_RETRIES):
+            cap = cv2.VideoCapture(source)
+            try:
+                try:
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                except Exception:
+                    pass
+                if not cap.isOpened():
+                    frame = None
+                else:
+                    ok, frame = cap.read()
+                    if not ok:
+                        frame = None
+                if self._frame_is_usable(frame):
+                    return frame
+            finally:
+                cap.release()
+            if attempt + 1 < FRAME_CAPTURE_MAX_RETRIES:
+                time.sleep(FRAME_CAPTURE_RETRY_DELAY_SECONDS * (attempt + 1))
+        return None
+
+    def _frame_is_usable(self, frame) -> bool:
+        shape = getattr(frame, "shape", None)
+        if frame is None or not shape or len(shape) < 2:
+            return False
         try:
-            if not cap.isOpened():
-                return None
-            ok, frame = cap.read()
-            if not ok:
-                return None
+            height = int(shape[0])
+            width = int(shape[1])
+        except (TypeError, ValueError):
+            return False
+        return height >= FRAME_CAPTURE_MIN_DIMENSION and width >= FRAME_CAPTURE_MIN_DIMENSION
+
+    def _decode_browser_frame(self, payload: Dict):
+        raw = payload.get("image_base64") or payload.get("image_data_url") or ""
+        if not raw:
+            raise ValueError("Browser camera image is required for browser inspection.")
+        if "," in raw:
+            raw = raw.split(",", 1)[1]
+        try:
+            buffer = np.frombuffer(base64.b64decode(raw), dtype=np.uint8)
+        except Exception as exc:
+            raise ValueError(f"Unable to decode browser camera image: {exc}")
+        try:
+            frame = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+        except Exception as exc:
+            raise ValueError(f"Unable to decode browser camera image: {exc}")
+        if self._frame_is_usable(frame):
             return frame
-        finally:
-            cap.release()
+        raise ValueError("Unable to decode browser camera image.")
 
     def _capture_frame(self, descriptor: CameraDescriptor, payload: Dict):
         if descriptor.camera_id == "browser":
-            raw = payload.get("image_base64") or payload.get("image_data_url") or ""
-            if not raw:
-                raise ValueError("Browser camera image is required for browser inspection.")
-            if "," in raw:
-                raw = raw.split(",", 1)[1]
-            frame = cv2.imdecode(np.frombuffer(base64.b64decode(raw), dtype=np.uint8), cv2.IMREAD_COLOR)
-            if frame is None:
-                raise ValueError("Unable to decode browser camera image.")
-            return frame
+            return self._decode_browser_frame(payload)
         if descriptor.camera_id == "amcrest":
             frame = self._capture_from_source(AMCREST_RTSP_URL)
             if frame is None:
@@ -1643,30 +1741,48 @@ class EyesService:
             if ranked:
                 usable_target = [candidate for candidate in ranked if candidate[1]["usable_target_evidence"]]
                 in_target = [candidate for candidate in ranked if candidate[1]["in_target"]]
-                pool = usable_target or in_target or ranked
-                winner, winner_metrics, _score = max(
-                    pool,
-                    key=lambda candidate: (
-                        candidate[2],
-                        float(candidate[0].get("confidence") or 0.0),
-                    ),
-                )
-                winner_source = winner.get("source")
-                if not winner_source:
-                    is_face = (winner.get("entity_type") or "").strip().lower() == "face"
-                    label = (winner.get("label") or "").strip().lower()
-                    winner_source = "face_match" if is_face and label not in {"", "unknown", "unrecognized"} else ("face_detection" if is_face else "local_detection")
+                if usable_target or in_target:
+                    pool = usable_target or in_target
+                    winner, winner_metrics, _score = max(
+                        pool,
+                        key=lambda candidate: (
+                            candidate[2],
+                            float(candidate[0].get("confidence") or 0.0),
+                        ),
+                    )
+                    winner_source = winner.get("source")
+                    if not winner_source:
+                        is_face = (winner.get("entity_type") or "").strip().lower() == "face"
+                        label = (winner.get("label") or "").strip().lower()
+                        winner_source = "face_match" if is_face and label not in {"", "unknown", "unrecognized"} else ("face_detection" if is_face else "local_detection")
+                    return {
+                        **winner,
+                        "source": winner_source,
+                        "target_metrics": {
+                            "in_target": winner_metrics["in_target"],
+                            "center_in_target": winner_metrics["center_in_target"],
+                            "overlap_ratio": round(winner_metrics["overlap_ratio"], 3),
+                            "target_coverage": round(winner_metrics["target_coverage"], 3),
+                            "center_proximity": round(winner_metrics["center_proximity"], 3),
+                            "inside_area_ratio": round(winner_metrics["inside_area_ratio"], 4),
+                            "usable_target_evidence": winner_metrics["usable_target_evidence"],
+                        },
+                    }
                 return {
-                    **winner,
-                    "source": winner_source,
+                    "label": "",
+                    "confidence": 0.0,
+                    "box": dict((target_region or {}).get("pixels") or {}),
+                    "source": "target_region",
+                    "entity_type": "object",
                     "target_metrics": {
-                        "in_target": winner_metrics["in_target"],
-                        "center_in_target": winner_metrics["center_in_target"],
-                        "overlap_ratio": round(winner_metrics["overlap_ratio"], 3),
-                        "target_coverage": round(winner_metrics["target_coverage"], 3),
-                        "center_proximity": round(winner_metrics["center_proximity"], 3),
-                        "inside_area_ratio": round(winner_metrics["inside_area_ratio"], 4),
-                        "usable_target_evidence": winner_metrics["usable_target_evidence"],
+                        "in_target": False,
+                        "center_in_target": False,
+                        "overlap_ratio": 0.0,
+                        "target_coverage": 0.0,
+                        "center_proximity": 0.0,
+                        "inside_area_ratio": 0.0,
+                        "usable_target_evidence": False,
+                        "synthetic_target_region": True,
                     },
                 }
         if best_face:
@@ -1783,12 +1899,12 @@ class EyesService:
                 if target_region:
                     if person_in_frame:
                         return (
-                            "I’m not getting a clear object inside the target box yet. "
-                            "I can see a person in the frame, but not a clear target inside the box."
+                            "I’m tracking the selected region, but I’m not getting a clear object there yet. "
+                            "I can see a person elsewhere in the frame, but that is not the selected target."
                         )
                     return (
-                        "I’m not getting a clear object inside the target box yet. "
-                        "Please center the object inside the box and move a little closer."
+                        "I’m tracking the selected region, but I’m not getting a clear object there yet. "
+                        "Please center the object in the selected region and move a little closer."
                     )
                 return (
                     f"I do not know what this object is yet from {camera.label}. "
@@ -2143,8 +2259,8 @@ class EyesService:
 
         if latest_event == "target_lost" and (target_region_used or workflow_mode in {"assist", "troubleshoot"}):
             if person_present:
-                return "I lost sight of the target for a moment, but I can still see you in frame."
-            return "I lost sight of the target for a moment."
+                return "I lost sight of the selected region for a moment, but I can still see a person in frame."
+            return "I lost sight of the selected region for a moment."
         if (
             target_region_used
             and person_present
@@ -2152,13 +2268,13 @@ class EyesService:
             and subject_entity_type != "face"
             and focus_label != "the target"
         ):
-            return f"I can see you in frame, but my focus is on {focus_label} inside the target box."
+            return f"I can see you in frame, but my focus is on {focus_label} inside the selected region."
         if latest_event == "target_reacquired" and subject_visible and focus_label != "the target":
             return f"I’m looking through {camera.label} right now. I found {focus_label} again."
         if latest_event == "attention_stable" and subject_visible and focus_label != "the target" and workflow_mode in {"assist", "troubleshoot"}:
             return f"I’m still watching {focus_label}."
         if target_region_used and subject_visible:
-            return f"My focus is on {focus_label} inside the target box."
+            return f"My focus is on {focus_label} inside the selected region."
         return ""
 
     def _assist_observation_payload(
@@ -2191,9 +2307,9 @@ class EyesService:
         if embodied_summary:
             observation_summary = embodied_summary
         elif target_region_used and certainty == "uncertain":
-            observation_summary = f"The object inside the target area may be {normalized_label}, but I need a closer view."
+            observation_summary = f"I’m tracking the selected region. It may be {normalized_label}, but I need a closer view to confirm."
         elif target_region_used and certainty == "unknown":
-            observation_summary = "I’m not getting a clear object inside the target box yet."
+            observation_summary = "I’m tracking the selected region, but classification is still unclear."
         elif certainty == "recognized":
             observation_summary = f"{normalized_label} appears to be in view."
         elif certainty == "uncertain":
@@ -2794,8 +2910,10 @@ class EyesService:
                 "entity_type": primary_entity_type,
                 "reason": recognition_reason,
                 "target_region_applied": bool(target_region),
+                "target_mode": target_mode,
                 "target_region_expanded": bool(target_region and target_region.get("analysis_pixels") != target_region.get("pixels")),
                 "target_primary_in_region": bool((primary.get("target_metrics") or {}).get("in_target")),
+                "target_region_fallback_focus": bool((primary.get("target_metrics") or {}).get("synthetic_target_region")),
                 "target_primary_centered": bool((primary.get("target_metrics") or {}).get("center_in_target")),
                 "target_primary_overlap_ratio": (primary.get("target_metrics") or {}).get("overlap_ratio"),
                 "target_primary_coverage": (primary.get("target_metrics") or {}).get("target_coverage"),
@@ -2842,7 +2960,7 @@ class EyesService:
                 workflow_action=str(payload.get("workflow_action") or ""),
                 perception=perception,
             )
-            observation_id = self.store.add_vision_observation(
+            observation_id = self._store_vision_observation(
                 user_id=payload.get("user_id"),
                 camera_key=self._camera_key(camera),
                 camera_label=camera.label,
@@ -2966,7 +3084,7 @@ class EyesService:
                     else "No recognized faces yet."
                 )
             )
-            observation_id = self.store.add_vision_observation(
+            observation_id = self._store_vision_observation(
                 user_id=payload.get("user_id"),
                 camera_key=self._camera_key(camera),
                 camera_label=camera.label,
