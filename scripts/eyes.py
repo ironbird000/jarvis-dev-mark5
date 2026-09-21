@@ -325,7 +325,13 @@ class EyesService:
         return self._is_admin_user(payload.get("user_id"))
 
     def _build_browser_descriptor(self, user_id: Optional[int], profile: Optional[Dict] = None) -> Optional[CameraDescriptor]:
-        profile = profile or self._browser_profile(user_id)
+        if profile is None:
+            profile = self._browser_profile(user_id) if user_id else {
+                "browser_camera_enabled": 0,
+                "browser_camera_permission_state": "prompt",
+                "browser_camera_device_id": "",
+                "browser_camera_label": "",
+            }
         if not (
             bool(profile.get("browser_camera_enabled"))
             and (profile.get("browser_camera_permission_state") or "prompt") == "granted"
