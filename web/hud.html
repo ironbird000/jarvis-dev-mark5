@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>J.A.R.V.I.S. — Mark3 HUD</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+:root{
+  --bg:#02050a;
+  --panel:rgba(2,10,18,0.16);
+  --cyan:#79f7ff;
+  --text:#f2fcff;
+  --muted:#c4e1e8;
+  --jarvis:#9befff;
+  --user:#ffffff;
+  --admin-red:#ff4a4a;
+}
+*{box-sizing:border-box}
+html,body{
+  height:100%;
+  margin:0;
+  background:transparent;
+  color:var(--text);
+  font-family:Segoe UI,Roboto,Arial,sans-serif;
+}
+body{
+  position:relative;
+  overflow:hidden;
+}
+body.offline{filter:saturate(.92)}
+#hud-bg-image{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100vw;
+  height:100vh;
+  object-fit:cover;
+  z-index:-100;
+  pointer-events:none;
+  opacity:1;
+}
+#wrap{
+  width:100%;
+  height:100vh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  padding:10px 14px;
+  gap:10px;
+  position:relative;
+  z-index:1;
+}
+.header{
+  width:100%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  position:relative;
+  min-height:86px;
+}
+.header-brand{
+  display:inline-flex;
+  align-items:center;
+  gap:14px;
+}
+.hero-title{
+  position:relative;
+  display:inline-flex;
+  align-items:flex-end;
+  gap:0;
+  padding:0 0 6px 0;
+  transform:skewX(-10deg);
+}
+.hero-letter,
+.hero-dot{
+  position:relative;
+  display:inline-block;
+  font-family:Impact,"Arial Black",Haettenschweiler,sans-serif;
+  font-weight:900;
+  font-style:italic;
+  font-size:64px;
+  line-height:0.9;
+  letter-spacing:-1px;
+  text-transform:uppercase;
+  background:linear-gradient(180deg,#ffb0b0 0%,#ff3b30 14%,#d50d0d 42%,#990000 74%,#5e0000 100%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-fill-color:transparent;
+  text-shadow:
+    0 1px 0 rgba(255,255,255,.28),
+    0 0 10px rgba(255,30,30,.18);
+  filter:
+    drop-shadow(-1px -1px 0 rgba(255,240,240,.30))
+    drop-shadow(1px 1px 0 rgba(35,0,0,.95))
+    drop-shadow(0 0 2px rgba(35,0,0,.95));
+}
+.hero-dot{
+  font-size:38px;
+  margin:0 2px 7px 0;
+}
+.hero-letter.a::after{
+  content:"";
+  position:absolute;
+  left:23px;
+  bottom:10px;
+  width:92px;
+  height:6px;
+  background:linear-gradient(180deg,#ff6a61 0%,#c10000 100%);
+  border-radius:999px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.22),
+    0 0 6px rgba(255,40,40,.18);
+  transform:skewX(18deg);
+}
+.dev-badge{
+  position:static;
+  font-size:12px;
+  font-weight:800;
+  color:#001;
+  background:rgba(121,247,255,.92);
+  border-radius:6px;
+  padding:4px 8px;
+  box-shadow:0 0 12px rgba(121,247,255,.28);
+  line-height:1;
+  user-select:none;
+}
+.header-actions{
+  position:absolute;
+  right:0;
+  top:10px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.header-btn{
+  min-width:88px;
+  height:40px;
+  border-radius:10px;
+  border:1px solid rgba(0,255,255,.22);
+  background:rgba(3,16,24,.16);
+  color:var(--cyan);
+  cursor:pointer;
+  font-size:13px;
+  font-weight:800;
+  padding:0 14px;
+  box-shadow:0 0 12px rgba(0,255,255,.08);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+}
+.header-btn:hover{background:rgba(8,28,40,.24)}
+#setup-btn{
+  min-width:40px;
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  padding:0;
+  font-size:18px;
+}
+#admin-btn{
+  color:var(--admin-red);
+  border-color:rgba(255,90,90,.28);
+}
+#admin-btn:hover{
+  background:rgba(40,12,12,.28);
+}
+#logout-btn{
+  min-width:92px;
+}
+.hud-grid{
+  flex:1;
+  min-height:0;
+  display:grid;
+  grid-template-columns:360px minmax(0,1fr);
+  gap:10px;
+}
+.panel{
+  background:var(--panel);
+  border:1px solid rgba(140,240,255,.10);
+  border-radius:14px;
+  box-shadow:0 8px 24px rgba(0,0,0,.10), inset 0 0 0 1px rgba(255,255,255,.02);
+  overflow:hidden;
+  min-height:0;
+}
+.controls-panel{
+  display:flex;
+  flex-direction:column;
+  padding:14px 14px 12px;
+  gap:12px;
+}
+.section-title{
+  font-size:13px;
+  letter-spacing:2px;
+  color:var(--muted);
+  font-weight:700;
+  text-transform:uppercase;
+}
+.status-box{
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid rgba(0,255,255,.08);
+  background:rgba(1,8,12,.08);
+}
+.status-line{
+  font-size:14px;
+  color:var(--cyan);
+  font-weight:700;
+}
+.status-sub{
+  margin-top:4px;
+  font-size:12px;
+  color:var(--muted);
+}
+.wake-indicator{
+  margin-left:12px;
+  padding:6px 12px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.08em;
+  color:#d7f7ff;
+  border:1px solid rgba(90,220,255,.35);
+  background:rgba(40,80,95,.35);
+  box-shadow:0 0 10px rgba(0,255,255,.08) inset;
+}
+.wake-indicator.red{
+  color:#ffd7d7;
+  border-color:rgba(255,90,90,.55);
+  background:rgba(120,20,20,.45);
+  box-shadow:0 0 14px rgba(255,0,0,.22);
+}
+.wake-indicator.green{
+  color:#d9ffe1;
+  border-color:rgba(80,255,140,.55);
+  background:rgba(20,110,45,.45);
+  box-shadow:0 0 14px rgba(0,255,100,.22);
+}
+.wake-indicator.idle{
+  color:#d7f7ff;
+  border-color:rgba(90,220,255,.35);
+  background:rgba(40,80,95,.35);
+}
+.ekg-box{
+  width:100%;
+  height:74px;
+  background:rgba(1,9,14,.08);
+  border:1px solid rgba(0,255,255,.10);
+  border-radius:10px;
+  padding:8px;
+}
+#ekg-canvas{
+  width:100%;
+  height:100%;
+  display:block;
+}
+.control-stack{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.ctrl-btn{
+  width:100%;
+  background:rgba(6,22,30,.14);
+  color:var(--cyan);
+  border:1px solid rgba(0,255,255,.20);
+  border-radius:10px;
+  padding:12px 14px;
+  cursor:pointer;
+  font-size:13px;
+  font-weight:700;
+  text-align:center;
+}
+.ctrl-btn:hover{background:rgba(9,32,46,.22)}
+.ctrl-btn.off{
+  border-color:rgba(255,90,90,.24);
+  color:#ffb7b7;
+}
+.slider-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:10px 0 4px;
+}
+.slider-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+.slider-top label{
+  font-size:12px;
+  color:var(--muted);
+}
+.gain-value{
+  min-width:44px;
+  text-align:right;
+  color:var(--cyan);
+  font-size:12px;
+}
+input[type="range"]{
+  width:100%;
+  appearance:none;
+  height:4px;
+  background:rgba(10,35,48,.36);
+  border-radius:4px;
+  outline:none;
+  border:1px solid rgba(0,255,255,.07);
+}
+input[type="range"]::-webkit-slider-thumb{
+  appearance:none;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--cyan);
+  border:1px solid #033;
+  box-shadow:0 0 10px rgba(0,255,255,.3);
+}
+.upload-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding:10px;
+  background:rgba(3,15,22,.10);
+  border:1px solid rgba(0,255,255,.08);
+  border-radius:10px;
+}
+.upload-top{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.file-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px 12px;
+  min-width:132px;
+  border-radius:8px;
+  border:1px solid rgba(0,255,255,.18);
+  background:rgba(6,22,30,.14);
+  color:var(--cyan);
+  cursor:pointer;
+  font-size:12px;
+  font-weight:700;
+}
+.file-name{
+  color:var(--text);
+  font-size:12px;
+  opacity:.95;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  max-width:180px;
+}
+.progress{
+  width:100%;
+  height:14px;
+  border-radius:999px;
+  background:rgba(8,25,35,.28);
+  overflow:hidden;
+  border:1px solid rgba(0,255,255,.06);
+}
+.progress-bar{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,#2c7cff,#6ef7ff);
+  box-shadow:0 0 12px rgba(0,255,255,.25);
+  transition:width .2s linear;
+}
+.upload-status{
+  font-size:12px;
+  color:var(--muted);
+  min-height:16px;
+}
+.quick-notes{
+  font-size:11.5px;
+  line-height:1.45;
+  color:#def6fa;
+  background:rgba(2,12,18,.08);
+  border:1px solid rgba(0,255,255,.08);
+  border-radius:10px;
+  padding:10px 12px;
+}
+.quick-notes b{color:var(--cyan)}
+.console-panel{
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+}
+.response-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:14px 16px 10px;
+  border-bottom:1px solid rgba(0,255,255,.06);
+  background:rgba(1,8,12,.04);
+}
+.response-title{
+  font-size:13px;
+  letter-spacing:2px;
+  color:var(--muted);
+  font-weight:700;
+  text-transform:uppercase;
+}
+#console-status{
+  font-size:12px;
+  color:#d4f4fb;
+}
+#response-box{
+  flex:1;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  background:linear-gradient(180deg, rgba(255,255,255,.015), transparent 25%), rgba(1,8,12,.04);
+}
+.msg{
+  max-width:78%;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.05);
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  box-shadow:0 8px 16px rgba(0,0,0,.08);
+}
+.msg.user{
+  align-self:flex-start;
+  background:rgba(255,255,255,.14);
+  color:var(--user);
+}
+.msg.jarvis{
+  align-self:flex-end;
+  background:linear-gradient(180deg, rgba(40,90,140,.12), rgba(10,22,42,.08));
+  color:var(--jarvis);
+  border-color:rgba(100,180,255,.16);
+}
+.msg-meta{font-size:11px;opacity:.84}
+.msg.user .msg-meta{text-align:left}
+.msg.jarvis .msg-meta{text-align:right;color:#d3e2ff}
+.msg-body{white-space:pre-wrap;word-break:break-word;line-height:1.45}
+.manual-wrap{
+  border-top:1px solid rgba(0,255,255,.06);
+  padding:12px 14px 14px;
+  display:flex;
+  gap:10px;
+  align-items:flex-end;
+  background:rgba(3,12,18,.08);
+}
+#manual-input{
+  flex:1;
+  min-height:54px;
+  max-height:140px;
+  resize:vertical;
+  background:rgba(1,7,10,.12);
+  color:var(--text);
+  border:1px solid rgba(0,255,255,.14);
+  border-radius:10px;
+  padding:12px 14px;
+  outline:none;
+  font:inherit;
+  line-height:1.4;
+}
+#submit-manual{
+  min-width:120px;
+  height:54px;
+  border-radius:10px;
+  border:1px solid rgba(0,255,255,.18);
+  background:rgba(5,24,34,.14);
+  color:var(--cyan);
+  font-weight:800;
+  cursor:pointer;
+}
+#submit-manual:hover{background:rgba(8,34,48,.20)}
+.modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.26);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:1000;
+}
+.modal-backdrop.open{display:flex}
+.modal-backdrop.hidden{display:none}
+.modal{
+  width:min(760px,95vw);
+  max-height:88vh;
+  overflow:auto;
+  background:rgba(4,14,22,.18);
+  border:1px solid rgba(0,255,255,.12);
+  border-radius:16px;
+  box-shadow:0 20px 60px rgba(0,0,0,.20);
+  padding:18px;
+}
+.modal-title{
+  font-size:18px;
+  font-weight:800;
+  color:var(--cyan);
+  letter-spacing:2px;
+  margin-bottom:14px;
+}
+.form-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.form-full{grid-column:1 / span 2}
+.field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.field label{
+  font-size:12px;
+  color:var(--muted);
+  font-weight:700;
+}
+.field input,
+.field select{
+  background:rgba(7,19,26,.14);
+  color:var(--text);
+  border:1px solid rgba(0,255,255,.10);
+  border-radius:10px;
+  padding:11px 12px;
+  outline:none;
+}
+.field input[readonly]{
+  opacity:.94;
+  background:rgba(11,18,23,.14);
+}
+.modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:16px;
+}
+.btn-secondary,.btn-primary{
+  border-radius:10px;
+  padding:11px 14px;
+  font-weight:800;
+  cursor:pointer;
+}
+.btn-secondary{
+  background:rgba(255,255,255,.05);
+  color:#dce8ec;
+  border:1px solid rgba(255,255,255,.10);
+}
+.btn-primary{
+  background:rgba(0,255,255,.08);
+  color:var(--cyan);
+  border:1px solid rgba(0,255,255,.16);
+}
+.small-note{font-size:11px;color:#c1d7dc}
+.hidden-input{display:none}
+@media (max-width: 980px){
+  .hud-grid{grid-template-columns:1fr}
+  .header{min-height:72px}
+  .hero-letter{font-size:46px}
+  .hero-dot{font-size:30px;margin-bottom:5px}
+  .hero-letter.a::after{left:16px;width:68px}
+  .header-actions{top:6px}
+  .form-grid{grid-template-columns:1fr}
+  .form-full{grid-column:auto}
+}
+</style>
+</head>
+<body class="offline">
+  <img id="hud-bg-image" src="assets/jarvis-ironman.gif" alt="" />
+
+  <div id="wrap">
+    <div class="header">
+      <div class="header-brand">
+        <div class="hero-title" aria-label="J.A.R.V.I.S.">
+          <span class="hero-letter">J</span><span class="hero-dot">.</span>
+          <span class="hero-letter a">A</span><span class="hero-dot">.</span>
+          <span class="hero-letter">R</span><span class="hero-dot">.</span>
+          <span class="hero-letter">V</span><span class="hero-dot">.</span>
+          <span class="hero-letter">I</span><span class="hero-dot">.</span>
+          <span class="hero-letter">S</span><span class="hero-dot">.</span>
+        </div>
+        <div id="wake-word-indicator" class="wake-indicator idle">VOICE</div>
+      </div>
+
+      <div class="header-actions">
+        <button id="logout-btn" class="header-btn" type="button">Log Off</button>
+        <button id="admin-btn" class="header-btn" type="button" style="display:none;">Admin</button>
+        <button id="setup-btn" class="header-btn" title="User profile settings" type="button">⚙</button>
+      </div>
+    </div>
+
+    <div class="hud-grid">
+      <section class="panel controls-panel">
+        <div class="section-title">Controls</div>
+
+        <div class="status-box">
+          <div class="status-line">System Ready</div>
+          <div id="console-status-inline" class="status-sub">Awaiting input.</div>
+        </div>
+
+        <div class="ekg-box">
+          <canvas id="ekg-canvas" width="1000" height="140"></canvas>
+        </div>
+
+        <div class="control-stack">
+          <button id="btn-mic-toggle" class="ctrl-btn">MIC MUTE</button>
+          <button id="btn-audio-toggle" class="ctrl-btn">BROWSER AUDIO MUTE</button>
+        </div>
+
+        <div class="slider-wrap">
+          <div class="slider-top">
+            <label for="mic-gain-slider">Mic Gain</label>
+            <div id="gain-value" class="gain-value">1.0x</div>
+          </div>
+          <input id="mic-gain-slider" type="range" min="0.0" max="4.0" step="0.1" value="1.0"/>
+        </div>
+
+        <div class="upload-wrap">
+          <div class="upload-top">
+            <label for="file-upload" class="file-btn">Select File</label>
+            <input id="file-upload" class="hidden-input" type="file"
+              accept=".txt,.md,.rtf,.pdf,.doc,.docx,.odt,.csv,.tsv,.xls,.xlsx,.ods,.json,.ppt,.pptx,.odp,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.svg,.py,.js,.ts,.html,.css,.xml,.yaml,.yml,.dwg,.dxf,.zip,.sh,.bash,.ksh,.zsh,.ps1,.bat"/>
+            <div id="file-name" class="file-name">No file selected</div>
+          </div>
+          <div class="progress"><div id="upload-progress-bar" class="progress-bar"></div></div>
+          <div id="upload-status" class="upload-status"></div>
+        </div>
+
+        <div class="quick-notes">
+          <b>Quick instructions</b><br/>
+          Typed prompts do not need the wake word.<br/>
+          Mic starts live by default.<br/>
+          Use <b>MIC MUTE</b> to stop voice input.<br/>
+          Use <b>Browser Audio Mute</b> to silence spoken output.<br/>
+          Upload target is <b>/api/upload</b>.<br/>
+          WebSocket target is <b>/jarvis-websocket</b>.
+        </div>
+      </section>
+
+      <section class="panel console-panel">
+        <div class="response-header">
+          <div class="response-title">Jarvis Response Console</div>
+          <div id="console-status">Ready</div>
+        </div>
+
+        <div id="response-box"></div>
+
+        <div class="manual-wrap">
+          <textarea id="manual-input" rows="2" placeholder="Type your question here. Press Enter to submit, Shift+Enter for a new line."></textarea>
+          <button id="submit-manual">Submit</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div id="settings-title" class="modal-title">USER PROFILE SETTINGS</div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label for="settings-first-name">First Name</label>
+          <input id="settings-first-name" type="text" readonly/>
+        </div>
+
+        <div class="field">
+          <label for="settings-last-name">Last Name</label>
+          <input id="settings-last-name" type="text" readonly/>
+        </div>
+
+        <div class="field form-full">
+          <label for="settings-email">Email Address</label>
+          <input id="settings-email" type="email" readonly/>
+          <div class="small-note">Name and email fields are for reference only and cannot be changed here.</div>
+        </div>
+
+        <div class="field form-full">
+          <label for="settings-display-name">How Jarvis should refer to you</label>
+          <input id="settings-display-name" type="text" placeholder="Preferred name"/>
+        </div>
+
+        <div class="field form-full">
+          <label for="settings-home-location">Home Location</label>
+          <input id="settings-home-location" type="text" readonly/>
+          <div class="small-note">Used for local greeting and farewell timing when available.</div>
+        </div>
+
+        <div class="field form-full">
+          <label for="settings-preferred-language">Default Language</label>
+          <select id="settings-preferred-language">
+            <option value="auto">Auto-detect</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="nl">Dutch</option>
+            <option value="pl">Polish</option>
+            <option value="ru">Russian</option>
+            <option value="uk">Ukrainian</option>
+            <option value="hi">Hindi</option>
+            <option value="ur">Urdu</option>
+            <option value="ar">Arabic</option>
+            <option value="tr">Turkish</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+          </select>
+          <div class="small-note">Used as the preferred language hint for voice input. Auto-detect remains available.</div>
+        </div>
+
+        <div class="field">
+          <label for="settings-password">New Password</label>
+          <input id="settings-password" type="password" placeholder="New password"/>
+        </div>
+
+        <div class="field">
+          <label for="settings-password-confirm">Confirm New Password</label>
+          <input id="settings-password-confirm" type="password" placeholder="Confirm new password"/>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="settings-cancel" class="btn-secondary" type="button">Cancel</button>
+        <button id="settings-save" class="btn-primary" type="button">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/settings.js"></script>
+  <script>
+const APP_BASE = "";
+const API_ME_ENDPOINT = `${APP_BASE}/api/me`;
+const AUTH_SETTINGS_ENDPOINT = `${APP_BASE}/auth/settings`;
+const FILE_UPLOAD_ENDPOINT = `${APP_BASE}/api/upload`;
+const LOGOUT_ENDPOINT = `${APP_BASE}/auth/logout`;
+
+let ws = null;
+let audioCtx = null;
+let micStream = null;
+let wakeIndicatorResetTimer = null;
+let wakeListeningHoldTimer = null;
+
+function setWakeIndicator(state, label){
+  const el = document.getElementById('wake-word-indicator');
+  if(!el) return;
+  el.classList.remove('idle','red','green');
+  el.classList.add(state || 'idle');
+  el.textContent = label || 'VOICE';
+}
+
+function pulseWakeHeard(){
+  setWakeIndicator('red', 'HEARD');
+  if(wakeIndicatorResetTimer) clearTimeout(wakeIndicatorResetTimer);
+  wakeIndicatorResetTimer = setTimeout(() => {
+    setWakeIndicator('idle', 'VOICE');
+  }, 1200);
+}
+
+function setWakeListening(){
+  setWakeIndicator('green', 'LISTENING');
+  if(wakeListeningHoldTimer) clearTimeout(wakeListeningHoldTimer);
+  wakeListeningHoldTimer = setTimeout(() => {
+    setWakeIndicator('idle', 'VOICE');
+  }, 6000);
+}
+
+let gainNode = null;
+let analyser = null;
+let processor = null;
+let micMuted = false;
+let audioMuted = false;
+let compiledAudioDataBuffer = [];
+let ekgAnimationId = null;
+let currentUser = null;
+let currentUserName = 'Sir';
+let currentUserEmail = '';
+let currentUserLogin = '';
+let currentIsAdmin = false;
+let currentFirstName = '';
+let currentLastName = '';
+let currentHomeLocation = '';
+let currentHomeLocationLabel = '';
+let currentPreferredLanguage = 'auto';
+let scheduledAudioChunkPlaybackTime = 0;
+let currentActiveBufferSources = [];
+let lastOpenedDocumentPath = '';
+const AUDIO_GATE_THRESHOLD = 0.012;
+const AUDIO_GATE_HOLD_TIME = 400;
+let lastVoiceDetectionTimestamp = 0;
+
+function cookieGet(name){
+  const parts = ("; " + document.cookie).split("; " + name + "=");
+  if(parts.length === 2) return decodeURIComponent(parts.pop().split(";").shift());
+  return "";
+}
+function nowStamp(){ return new Date().toLocaleString(); }
+function setConsoleStatus(text){
+  const a = document.getElementById('console-status');
+  const b = document.getElementById('console-status-inline');
+  if(a) a.textContent = text;
+  if(b) b.textContent = text;
+}
+function getCurrentDisplayName(){ return currentUserName || 'Sir'; }
+function addMessage(text, who='jarvis'){
+  if(!text || !String(text).trim()) return;
+  const box = document.getElementById('response-box');
+  const msg = document.createElement('div');
+  msg.className = `msg ${who === 'user' ? 'user' : 'jarvis'}`;
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+  meta.textContent = `${who === 'user' ? getCurrentDisplayName() : 'JARVIS'} • ${nowStamp()}`;
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  body.textContent = text;
+  msg.appendChild(meta);
+  msg.appendChild(body);
+  box.appendChild(msg);
+  box.scrollTop = box.scrollHeight;
+  return msg;
+}
+function splitNameParts(name){
+  const cleaned = (name || '').trim();
+  if(!cleaned) return { first:'', last:'' };
+  const parts = cleaned.split(/\s+/);
+  if(parts.length === 1) return { first: parts[0], last: '' };
+  return { first: parts[0], last: parts.slice(1).join(' ') };
+}
+function deriveIdentityFallbacks(){
+  const display =
+    localStorage.getItem('jarvis_display_name') ||
+    localStorage.getItem('display_name') ||
+    cookieGet('jarvis_display_name') ||
+    cookieGet('display_name') ||
+    cookieGet('jarvis_user_name') ||
+    cookieGet('user_name') ||
+    '';
+
+  const email =
+    localStorage.getItem('jarvis_email') ||
+    cookieGet('jarvis_email') ||
+    cookieGet('user_email') ||
+    '';
+
+  const login =
+    localStorage.getItem('jarvis_login') ||
+    cookieGet('jarvis_login') ||
+    cookieGet('login') ||
+    cookieGet('github_login') ||
+    '';
+
+  if(!currentUserName || currentUserName === 'Sir') currentUserName = display || 'Sir';
+  if(!currentUserEmail) currentUserEmail = email || '';
+  if(!currentUserLogin) currentUserLogin = login || '';
+  if(!currentUserLogin && currentUserEmail) currentUserLogin = currentUserEmail.split('@')[0] || '';
+
+  const parts = splitNameParts(currentUserName);
+  currentFirstName = currentFirstName || parts.first;
+  currentLastName = currentLastName || parts.last;
+
+  if(!currentFirstName && currentUserLogin) currentFirstName = currentUserLogin;
+}
+function getLocationDisplay(){
+  return currentHomeLocationLabel || currentHomeLocation || '';
+}
+function getFarewellPhrase(dateObj){
+  const hour = dateObj.getHours();
+  if(hour < 5) return "Good night";
+  if(hour < 12) return "Have a good day";
+  if(hour < 18) return "Enjoy the rest of your day";
+  if(hour < 22) return "Good evening";
+  return "Good night";
+}
+async function doLogout(){
+  const phrase = getFarewellPhrase(new Date());
+  const name = getCurrentDisplayName();
+  addMessage(`${phrase}, ${name}. Logging you off now.`, 'jarvis');
+
+  try{
+    const authToken = cookieGet('jarvis_mark3_session') || cookieGet('jarvis_user_token') || '';
+    const headers = {};
+    if(authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+    await fetch(LOGOUT_ENDPOINT, {
+      method:'POST',
+      headers,
+      credentials:'include'
+    });
+  }catch(e){
+    console.error('Logout request failed', e);
+  }
+
+  setTimeout(() => {
+    window.location.href = `${APP_BASE}/`;
+  }, 700);
+}
+function updateAdminButton(){
+  const btn = document.getElementById('admin-btn');
+  if(!btn) return;
+  const knownAdmin =
+    currentIsAdmin ||
+    currentUserLogin === 'ironbird000' ||
+    (currentUserEmail || '').toLowerCase().startsWith('ironbird000@');
+  btn.style.display = knownAdmin ? 'inline-flex' : 'none';
+}
+async function fetchCurrentUser(){
+  try{
+    const authToken = cookieGet('jarvis_mark3_session') || cookieGet('jarvis_user_token') || '';
+    const headers = {};
+    if(authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+    const res = await fetch(API_ME_ENDPOINT, {
+      method:'GET',
+      headers,
+      credentials:'include'
+    });
+
+    if(res.ok){
+      const payload = await res.json();
+      if(payload && payload.success && payload.user){
+        currentUser = payload.user;
+        currentUserName = payload.user.display_name || payload.user.name || currentUserName;
+        currentUserEmail = payload.user.email || currentUserEmail;
+        currentIsAdmin = !!payload.is_admin || !!payload.user.is_admin;
+
+        const settings = payload.user.settings || {};
+        currentFirstName = settings.first_name || currentFirstName;
+        currentLastName = settings.last_name || currentLastName;
+        currentHomeLocation = settings.home_location || '';
+        currentHomeLocationLabel = settings.home_location_label || '';
+        currentPreferredLanguage = settings.preferred_language || 'auto';
+      }
+    }
+  }catch(e){
+    console.error('Failed loading /api/me', e);
+  }
+
+  deriveIdentityFallbacks();
+
+  if(currentUserName) localStorage.setItem('jarvis_display_name', currentUserName);
+  if(currentUserEmail) localStorage.setItem('jarvis_email', currentUserEmail);
+  if(currentUserLogin) localStorage.setItem('jarvis_login', currentUserLogin);
+
+  updateAdminButton();
+}
+function setAllAudioMuted(muted){
+  audioMuted = muted;
+
+  if(muted){
+    currentActiveBufferSources.forEach(source => {
+      try{ source.stop(0); }catch(e){}
+    });
+    currentActiveBufferSources = [];
+    scheduledAudioChunkPlaybackTime = 0;
+  }
+
+  const btn = document.getElementById('btn-audio-toggle');
+  btn.textContent = muted ? 'BROWSER AUDIO UNMUTE' : 'BROWSER AUDIO MUTE';
+  btn.classList.toggle('off', muted);
+  addMessage(muted ? 'Browser audio muted.' : 'Browser audio enabled.','jarvis');
+}
+function downsampleBuffer(buffer, originalSampleRate, targetSampleRate){
+  if(originalSampleRate === targetSampleRate) return buffer;
+  const sampleRateRatio = originalSampleRate / targetSampleRate;
+  const newLength = Math.round(buffer.length / sampleRateRatio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0, offsetBuffer = 0;
+  while(offsetResult < result.length){
+    let nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0, count = 0;
+    for(let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++){
+      accum += buffer[i];
+      count++;
+    }
+    result[offsetResult] = count > 0 ? accum / count : 0;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return result;
+}
+function isFinalTranscriptPayload(p){
+  if(!p || typeof p !== 'object') return false;
+  if(p.type === 'transcript' && p.text) return true;
+  if(p.final_transcript && String(p.final_transcript).trim()) return true;
+  if(p.is_final && p.text) return true;
+  return false;
+}
+function getFinalTranscriptText(p){
+  if(p.type === 'transcript' && p.text) return p.text;
+  if(p.final_transcript) return p.final_transcript;
+  if(p.is_final && p.text) return p.text;
+  return '';
+}
+function maybeOpenDocumentFromAction(p){
+  if(!p || p.action !== 'open_uploaded_document' || !p.document) return false;
+
+  const storedPath = p.document.stored_path || '';
+  if(!storedPath) return false;
+
+  lastOpenedDocumentPath = storedPath;
+  const fileName = storedPath.split('/').pop();
+  const url = `${APP_BASE}/api/uploads/${encodeURIComponent(fileName)}`;
+  window.open(url, '_blank', 'noopener');
+  return true;
+}
+function connectWS(){
+  const token =
+    cookieGet('jarvis_mark3_session') ||
+    cookieGet('jarvis_user_token') ||
+    '';
+
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const wsUrl = `${proto}${location.host}/jarvis-websocket${token ? ('?token=' + encodeURIComponent(token)) : ''}`;
+
+  try{
+    ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = async () => {
+      document.body.classList.remove('offline');
+      setConsoleStatus('Connected');
+
+      if(!audioCtx){
+        try{
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+          });
+          if(audioCtx.state === 'suspended') await audioCtx.resume();
+
+          const src = audioCtx.createMediaStreamSource(micStream);
+          gainNode = audioCtx.createGain();
+          gainNode.gain.setValueAtTime(parseFloat(document.getElementById('mic-gain-slider').value || 1.0), audioCtx.currentTime);
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+          src.connect(gainNode);
+          gainNode.connect(analyser);
+          analyser.connect(processor);
+          processor.connect(audioCtx.destination);
+
+          processor.onaudioprocess = (e) => {
+            if(!ws || ws.readyState !== WebSocket.OPEN) return;
+            if(micMuted) return;
+
+            const inputBuffer = e.inputBuffer.getChannelData(0);
+            let sum = 0;
+            for(let i = 0; i < inputBuffer.length; i++) sum += inputBuffer[i] * inputBuffer[i];
+            const rms = Math.sqrt(sum / inputBuffer.length);
+
+            const resampled = downsampleBuffer(inputBuffer, audioCtx.sampleRate, 16000);
+            const currentTime = Date.now();
+
+            if(rms >= AUDIO_GATE_THRESHOLD){
+              lastVoiceDetectionTimestamp = currentTime;
+              pulseWakeHeard();
+            }
+
+            const pcmChunk = new Int16Array(resampled.length);
+            for(let i = 0; i < resampled.length; i++){
+              pcmChunk[i] = Math.max(-32768, Math.min(32767, resampled[i] * 32768));
+            }
+            compiledAudioDataBuffer.push(pcmChunk);
+          };
+          visualizeEKG();
+        }catch(e){
+          console.error('Mic init failed', e);
+          addMessage('Mic initialization error: ' + (e.message || e), 'jarvis');
+        }
+      }
+    };
+
+    ws.onclose = (ev) => {
+      console.error('WS closed', ev);
+      document.body.classList.add('offline');
+      setConsoleStatus('Disconnected');
+      setTimeout(connectWS, 2500);
+    };
+
+    ws.onerror = (e) => {
+      console.error('WS error', e);
+      setConsoleStatus('WebSocket error');
+    };
+
+    ws.onmessage = async (ev) => {
+      if(typeof ev.data === 'string'){
+        try{
+          const p = JSON.parse(ev.data);
+
+          maybeOpenDocumentFromAction(p);
+
+          if(isFinalTranscriptPayload(p)){
+            const finalText = getFinalTranscriptText(p).trim();
+            if(finalText) addMessage(finalText,'user');
+            setConsoleStatus('Transcript captured');
+            setWakeListening();
+          }else if(p.type === 'response' && p.text){
+            addMessage(p.text,'jarvis');
+            setConsoleStatus('Responding');
+          }else if(p.response_text){
+            addMessage(p.response_text,'jarvis');
+            setConsoleStatus('Responding');
+          }else if(p.type === 'error' && p.message){
+            addMessage(p.message,'jarvis');
+            setConsoleStatus(p.message);
+          }else if(p.type === 'status' && p.message){
+            setConsoleStatus(p.message);
+            if((p.message || '').toLowerCase().includes('wake word not detected')){
+              pulseWakeHeard();
+            }
+          }else if(p.partial_transcript || p.type === 'partial_transcript'){
+            setConsoleStatus('Listening...');
+          }
+        }catch(e){
+          console.warn('Ignored non-JSON ws text', e);
+        }
+      }else{
+        if(audioMuted || !audioCtx) return;
+        try{
+          const int16Array = new Int16Array(ev.data);
+          const float32Array = new Float32Array(int16Array.length);
+          const audioBuffer = audioCtx.createBuffer(1, float32Array.length, 22050);
+          for(let i = 0; i < int16Array.length; i++) float32Array[i] = int16Array[i] / 32768.0;
+          audioBuffer.getChannelData(0).set(float32Array);
+
+          const source = audioCtx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(audioCtx.destination);
+          currentActiveBufferSources.push(source);
+          source.onended = () => {
+            currentActiveBufferSources = currentActiveBufferSources.filter(s => s !== source);
+          };
+
+          const currentTime = audioCtx.currentTime;
+          if(scheduledAudioChunkPlaybackTime < currentTime) scheduledAudioChunkPlaybackTime = currentTime;
+          source.start(scheduledAudioChunkPlaybackTime);
+          scheduledAudioChunkPlaybackTime += audioBuffer.duration;
+        }catch(e){
+          console.error('Audio playback error', e);
+        }
+      }
+    };
+  }catch(e){
+    console.error('WS connect failed', e);
+    document.body.classList.add('offline');
+    setConsoleStatus('WebSocket failed');
+  }
+}
+function visualizeEKG(){
+  const canvas = document.getElementById('ekg-canvas');
+  const ctx = canvas.getContext('2d');
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = 'rgba(0,0,0,0.02)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    if(!analyser || micMuted){
+      ctx.strokeStyle = 'rgba(10,90,99,0.70)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height/2);
+      ctx.lineTo(canvas.width, canvas.height/2);
+      ctx.stroke();
+      ekgAnimationId = requestAnimationFrame(draw);
+      return;
+    }
+
+    const buf = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(buf);
+    ctx.strokeStyle = 'rgba(0,255,255,0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    const slice = canvas.width / buf.length;
+    let x = 0;
+    for(let i=0;i<buf.length;i++){
+      const v = (buf[i] - 128) / 128;
+      const y = canvas.height/2 + v*(canvas.height/2 - 8);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      x += slice;
+    }
+    ctx.stroke();
+    ekgAnimationId = requestAnimationFrame(draw);
+  }
+  if(ekgAnimationId) cancelAnimationFrame(ekgAnimationId);
+  ekgAnimationId = requestAnimationFrame(draw);
+}
+
+setInterval(()=>{
+  if(ws && ws.readyState === WebSocket.OPEN && compiledAudioDataBuffer.length && !micMuted){
+    let total = 0;
+    compiledAudioDataBuffer.forEach(b=> total += b.length);
+    const out = new Int16Array(total);
+    let off = 0;
+    compiledAudioDataBuffer.forEach(b=>{ out.set(b,off); off += b.length; });
+    try{ ws.send(out.buffer); }catch(e){}
+    compiledAudioDataBuffer = [];
+  }else{
+    compiledAudioDataBuffer = [];
+  }
+}, 250);
+
+const micBtn = document.getElementById('btn-mic-toggle');
+const audioBtn = document.getElementById('btn-audio-toggle');
+const gainSlider = document.getElementById('mic-gain-slider');
+const gainValue = document.getElementById('gain-value');
+
+micBtn.addEventListener('click', ()=>{
+  micMuted = !micMuted;
+  micBtn.textContent = micMuted ? 'MIC UNMUTE' : 'MIC MUTE';
+  micBtn.classList.toggle('off', micMuted);
+  if(gainNode && audioCtx){
+    const val = micMuted ? 0.0 : parseFloat(gainSlider.value || 1.0);
+    gainNode.gain.setTargetAtTime(val, audioCtx.currentTime, 0.01);
+  }
+  addMessage(micMuted ? 'Microphone muted.' : 'Microphone live.','jarvis');
+});
+audioBtn.addEventListener('click', ()=> setAllAudioMuted(!audioMuted));
+gainSlider.addEventListener('input', e=>{
+  const v = parseFloat(e.target.value);
+  gainValue.textContent = v.toFixed(1) + 'x';
+  if(gainNode && audioCtx && !micMuted) gainNode.gain.setValueAtTime(v, audioCtx.currentTime);
+});
+
+const fileUpload = document.getElementById('file-upload');
+const fileName = document.getElementById('file-name');
+const progressBar = document.getElementById('upload-progress-bar');
+const uploadStatus = document.getElementById('upload-status');
+
+async function uploadSelectedFile(file){
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const authToken = cookieGet('jarvis_mark3_session') || cookieGet('jarvis_user_token') || '';
+  const headers = {};
+  if(authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+  const response = await fetch(FILE_UPLOAD_ENDPOINT, {
+    method:'POST',
+    body:formData,
+    headers,
+    credentials:'include'
+  });
+
+  let payload = null;
+  try{ payload = await response.json(); }catch(e){}
+
+  if(!response.ok){
+    throw new Error(
+      (payload && (payload.message || payload.error)) ||
+      `Upload failed (${response.status}) at ${FILE_UPLOAD_ENDPOINT}`
+    );
+  }
+  return payload || {};
+}
+
+fileUpload.addEventListener('change', async ()=>{
+  const file = fileUpload.files && fileUpload.files[0];
+  if(!file) return;
+
+  fileName.textContent = file.name;
+  progressBar.style.width = '5%';
+  uploadStatus.textContent = 'Uploading and scanning...';
+  setConsoleStatus('Uploading file...');
+  addMessage(`Selected file: ${file.name}`,'user');
+
+  try{
+    progressBar.style.width = '35%';
+    const result = await uploadSelectedFile(file);
+    progressBar.style.width = '100%';
+    const detail =
+      result.summary ||
+      result.message ||
+      `${file.name} uploaded and queued for Jarvis document search.`;
+
+    uploadStatus.textContent = detail;
+    setConsoleStatus('File ingested');
+    addMessage(detail,'jarvis');
+  }catch(err){
+    progressBar.style.width = '0%';
+    uploadStatus.textContent = `Upload failed: ${err.message}`;
+    setConsoleStatus('Upload failed');
+    addMessage(`File upload failed: ${err.message}`,'jarvis');
+    console.error(err);
+  }
+});
+
+const manualInput = document.getElementById('manual-input');
+const submitManual = document.getElementById('submit-manual');
+
+function sendManual(){
+  const text = manualInput.value.trim();
+  if(!text) return;
+  addMessage(text,'user');
+
+  if(ws && ws.readyState === WebSocket.OPEN){
+    try{
+      ws.send(JSON.stringify({
+        type:'text_override',
+        text,
+        source:'manual_text'
+      }));
+    }catch(e){}
+  }else{
+    addMessage('Not connected. Your message could not be sent right now.','jarvis');
+  }
+
+  setConsoleStatus('Awaiting Jarvis response...');
+  manualInput.value = '';
+}
+manualInput.addEventListener('keydown', e=>{
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    sendManual();
+  }
+});
+submitManual.addEventListener('click', sendManual);
+
+async function saveSettings(payload){
+  const authToken = cookieGet('jarvis_mark3_session') || cookieGet('jarvis_user_token') || '';
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+  if(authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+  const response = await fetch(AUTH_SETTINGS_ENDPOINT, {
+    method:'POST',
+    headers,
+    credentials:'include',
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if(!response.ok || !data.success){
+    throw new Error(data.message || `Settings update failed: ${response.status}`);
+  }
+
+  if(data.user){
+    currentUser = data.user;
+    currentUserName = data.user.display_name || currentUserName;
+    currentUserEmail = data.user.email || currentUserEmail;
+
+    const settings = data.user.settings || {};
+    currentFirstName = settings.first_name || currentFirstName;
+    currentLastName = settings.last_name || currentLastName;
+    currentHomeLocation = settings.home_location || currentHomeLocation;
+    currentHomeLocationLabel = settings.home_location_label || currentHomeLocationLabel;
+    currentPreferredLanguage = settings.preferred_language || currentPreferredLanguage;
+  }
+
+  localStorage.setItem('jarvis_display_name', currentUserName);
+  if(currentUserEmail) localStorage.setItem('jarvis_email', currentUserEmail);
+
+  if(ws && ws.readyState === WebSocket.OPEN){
+    try{
+      ws.send(JSON.stringify({
+        type:'update_user_settings',
+        display_name: currentUserName,
+        preferred_language: currentPreferredLanguage
+      }));
+    }catch(e){}
+  }
+
+  addMessage(`Profile settings updated. I will refer to you as ${currentUserName}. Default language: ${currentPreferredLanguage}.`, 'jarvis');
+  return data;
+}
+
+document.getElementById('setup-btn').addEventListener('click', ()=>{
+  if(window.JarvisSettings && currentUser){
+    window.JarvisSettings.open(currentUser);
+  } else {
+    document.getElementById('settings-modal').classList.remove('hidden');
+    document.getElementById('settings-modal').classList.add('open');
+  }
+});
+document.getElementById('admin-btn').addEventListener('click', ()=>{
+  window.location.href = `${APP_BASE}/admin`;
+});
+document.getElementById('logout-btn').addEventListener('click', doLogout);
+
+if(window.JarvisSettings){
+  window.JarvisSettings.bind(saveSettings);
+}
+
+(async function init(){
+  await fetchCurrentUser();
+  connectWS();
+})();
+
+window.addEventListener('click', async function initOnce(){
+  window.removeEventListener('click', initOnce);
+  if(audioCtx && audioCtx.state === 'suspended'){
+    try{ await audioCtx.resume(); }catch(e){}
+  }
+  if(!ws || ws.readyState !== WebSocket.OPEN) connectWS();
+});
+
+window._jarvisHUD = {
+  connectWS,
+  sendManual,
+  setAllAudioMuted,
+  saveSettings
+};
+</script>
+</body>
+</html>

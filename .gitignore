@@ -7,3 +7,16 @@ data/logs/
 __pycache__/
 *.pyc
 .env.jarvis
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local env
+.venv/
+.env.jarvis
+
+# Runtime files
+run/*.pid
+data/logs/
+data/chroma/
