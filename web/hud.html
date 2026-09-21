@@ -276,103 +276,6 @@ body.offline{filter:saturate(.92)}
   border-color:rgba(255,90,90,.24);
   color:#ffb7b7;
 }
-.ctrl-btn.active{
-  background:rgba(10,38,54,.28);
-  border-color:rgba(121,247,255,.42);
-  box-shadow:0 0 18px rgba(121,247,255,.16);
-}
-.toolbar-select{
-  width:100%;
-  background:rgba(1,7,10,.12);
-  color:var(--text);
-  border:1px solid rgba(0,255,255,.14);
-  border-radius:10px;
-  padding:10px 12px;
-  outline:none;
-  font:inherit;
-}
-.vision-panel{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  padding:10px;
-  background:rgba(3,15,22,.10);
-  border:1px solid rgba(0,255,255,.08);
-  border-radius:10px;
-}
-.vision-toolbar{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:8px;
-}
-.vision-toolbar.three-up{
-  grid-template-columns:repeat(3,minmax(0,1fr));
-}
-.vision-stage{
-  position:relative;
-  width:100%;
-  aspect-ratio:4/3;
-  border-radius:12px;
-  overflow:hidden;
-  border:1px solid rgba(0,255,255,.12);
-  background:rgba(0,0,0,.28);
-}
-#vision-preview{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  display:block;
-  background:#000;
-}
-#vision-overlay{
-  position:absolute;
-  inset:0;
-  cursor:crosshair;
-  touch-action:none;
-}
-#vision-selection-box,
-#vision-crosshair{
-  position:absolute;
-  display:none;
-  pointer-events:none;
-}
-#vision-selection-box.active{
-  display:block;
-  border:2px solid rgba(121,247,255,.95);
-  box-shadow:0 0 0 1px rgba(0,0,0,.35) inset, 0 0 18px rgba(121,247,255,.25);
-}
-#vision-crosshair.active{
-  display:block;
-  width:24px;
-  height:24px;
-  margin:-12px 0 0 -12px;
-  border:2px solid rgba(121,247,255,.95);
-  border-radius:50%;
-  box-shadow:0 0 18px rgba(121,247,255,.25);
-}
-#vision-crosshair.active::before,
-#vision-crosshair.active::after{
-  content:"";
-  position:absolute;
-  background:rgba(121,247,255,.95);
-}
-#vision-crosshair.active::before{
-  left:50%;
-  top:-10px;
-  width:2px;
-  height:44px;
-  margin-left:-1px;
-}
-#vision-crosshair.active::after{
-  top:50%;
-  left:-10px;
-  width:44px;
-  height:2px;
-  margin-top:-1px;
-}
-.vision-status{
-  min-height:32px;
-}
 .slider-wrap{
   display:flex;
   flex-direction:column;
@@ -663,8 +566,6 @@ input[type="range"]::-webkit-slider-thumb{
   .header-actions{top:6px}
   .form-grid{grid-template-columns:1fr}
   .form-full{grid-column:auto}
-  .vision-toolbar,
-  .vision-toolbar.three-up{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -708,35 +609,6 @@ input[type="range"]::-webkit-slider-thumb{
         <div class="control-stack">
           <button id="btn-mic-toggle" class="ctrl-btn">MIC MUTE</button>
           <button id="btn-audio-toggle" class="ctrl-btn">BROWSER AUDIO MUTE</button>
-        </div>
-
-        <div class="vision-panel">
-          <div class="section-title">Browser Vision</div>
-          <select id="vision-camera-select" class="toolbar-select">
-            <option value="">Select browser camera</option>
-          </select>
-          <div class="vision-toolbar">
-            <button id="vision-start-btn" class="ctrl-btn" type="button">START CAMERA</button>
-            <button id="vision-switch-btn" class="ctrl-btn" type="button">SWITCH CAMERA</button>
-          </div>
-          <div class="vision-toolbar three-up">
-            <button id="vision-crosshair-btn" class="ctrl-btn active" type="button">CROSSHAIR</button>
-            <button id="vision-box-btn" class="ctrl-btn" type="button">BOX</button>
-            <button id="vision-clear-btn" class="ctrl-btn" type="button">CLEAR</button>
-          </div>
-          <div class="vision-stage">
-            <video id="vision-preview" autoplay playsinline muted></video>
-            <canvas id="vision-capture-canvas" class="hidden-input"></canvas>
-            <div id="vision-overlay" tabindex="0" aria-label="Browser vision selection overlay. Click or drag to choose a target. Use arrow keys to move the target, Enter to place it, and Escape to clear it.">
-              <div id="vision-selection-box"></div>
-              <div id="vision-crosshair"></div>
-            </div>
-          </div>
-          <div class="vision-toolbar">
-            <button id="vision-inspect-btn" class="ctrl-btn" type="button">INSPECT SELECTION</button>
-            <button id="vision-assist-btn" class="ctrl-btn" type="button">START ASSIST</button>
-          </div>
-          <div id="vision-status-detail" class="status-sub vision-status">Browser camera idle.</div>
         </div>
 
         <div class="slider-wrap">
@@ -867,10 +739,6 @@ const API_ME_ENDPOINT = `${APP_BASE}/api/me`;
 const AUTH_SETTINGS_ENDPOINT = `${APP_BASE}/auth/settings`;
 const FILE_UPLOAD_ENDPOINT = `${APP_BASE}/api/upload`;
 const LOGOUT_ENDPOINT = `${APP_BASE}/auth/logout`;
-const VISION_PREVIEW_ENDPOINT = `${APP_BASE}/api/vision/preview`;
-const VISION_INSPECT_ENDPOINT = `${APP_BASE}/api/vision/inspect`;
-const VISION_HEARTBEAT_INTERVAL_MS = 4000;
-const VISION_ASSIST_INTERVAL_MS = 2200;
 
 let ws = null;
 let audioCtx = null;
@@ -925,25 +793,6 @@ let lastOpenedDocumentPath = '';
 const AUDIO_GATE_THRESHOLD = 0.012;
 const AUDIO_GATE_HOLD_TIME = 400;
 let lastVoiceDetectionTimestamp = 0;
-const visionState = {
-  devices: [],
-  stream: null,
-  currentDeviceId: '',
-  currentDeviceLabel: '',
-  selectionMode: 'crosshair',
-  selection: null,
-  dragStart: null,
-  heartbeatTimer: null,
-  assistTimer: null,
-  assistSessionId: '',
-  assistActive: false,
-  heartbeatInFlight: false,
-  assistInFlight: false,
-  assistFailureCount: 0,
-  lastAssistSignature: '',
-  lastAssistText: '',
-  lastAssistAt: 0
-};
 
 function cookieGet(name){
   const parts = ("; " + document.cookie).split("; " + name + "=");
@@ -1035,6 +884,7 @@ async function doLogout(){
   try{
     const authToken = cookieGet('jarvis_mark3_session') || cookieGet('jarvis_user_token') || '';
     const headers = {};
+    if(authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
     await fetch(LOGOUT_ENDPOINT, {
       method:'POST',
@@ -1062,6 +912,7 @@ async function fetchCurrentUser(){
   try{
     const authToken = cookieGet('jarvis_mark3_session') || cookieGet('jarvis_user_token') || '';
     const headers = {};
+    if(authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
     const res = await fetch(API_ME_ENDPOINT, {
       method:'GET',
@@ -1377,521 +1228,6 @@ gainSlider.addEventListener('input', e=>{
   if(gainNode && audioCtx && !micMuted) gainNode.gain.setValueAtTime(v, audioCtx.currentTime);
 });
 
-const visionPreview = document.getElementById('vision-preview');
-const visionCanvas = document.getElementById('vision-capture-canvas');
-const visionOverlay = document.getElementById('vision-overlay');
-const visionSelectionBox = document.getElementById('vision-selection-box');
-const visionCrosshair = document.getElementById('vision-crosshair');
-const visionCameraSelect = document.getElementById('vision-camera-select');
-const visionStartBtn = document.getElementById('vision-start-btn');
-const visionSwitchBtn = document.getElementById('vision-switch-btn');
-const visionCrosshairBtn = document.getElementById('vision-crosshair-btn');
-const visionBoxBtn = document.getElementById('vision-box-btn');
-const visionClearBtn = document.getElementById('vision-clear-btn');
-const visionInspectBtn = document.getElementById('vision-inspect-btn');
-const visionAssistBtn = document.getElementById('vision-assist-btn');
-const visionStatusDetail = document.getElementById('vision-status-detail');
-
-function setVisionStatus(text){
-  if(visionStatusDetail) visionStatusDetail.textContent = text;
-}
-
-function clamp01(value){
-  return Math.max(0, Math.min(1, value));
-}
-
-function visionJsonHeaders(){
-  return {
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest'
-  };
-}
-
-function clearVisionSelection(){
-  visionState.selection = null;
-  visionState.dragStart = null;
-  renderVisionSelection();
-}
-
-function setVisionSelectionMode(mode){
-  visionState.selectionMode = mode === 'box' ? 'box' : 'crosshair';
-  visionCrosshairBtn.classList.toggle('active', visionState.selectionMode === 'crosshair');
-  visionBoxBtn.classList.toggle('active', visionState.selectionMode === 'box');
-  renderVisionSelection();
-}
-
-function renderVisionSelection(){
-  const selection = visionState.selection;
-  visionSelectionBox.classList.remove('active');
-  visionCrosshair.classList.remove('active');
-  if(!selection) return;
-  if(selection.mode === 'box'){
-    visionSelectionBox.classList.add('active');
-    visionSelectionBox.style.left = `${selection.x * 100}%`;
-    visionSelectionBox.style.top = `${selection.y * 100}%`;
-    visionSelectionBox.style.width = `${selection.width * 100}%`;
-    visionSelectionBox.style.height = `${selection.height * 100}%`;
-    return;
-  }
-  visionCrosshair.classList.add('active');
-  visionCrosshair.style.left = `${selection.x * 100}%`;
-  visionCrosshair.style.top = `${selection.y * 100}%`;
-}
-
-function selectionTargetPayload(){
-  const selection = visionState.selection;
-  if(!selection) return {};
-  if(selection.mode === 'box'){
-    return {
-      target_mode: 'box',
-      target_region: {
-        x: selection.x,
-        y: selection.y,
-        width: selection.width,
-        height: selection.height,
-        coordinate_space: 'normalized',
-        mode: 'box'
-      }
-    };
-  }
-  return {
-    target_mode: 'crosshair',
-    target_point: {
-      x: selection.x,
-      y: selection.y,
-      coordinate_space: 'normalized'
-    },
-    target_region: {
-      x: clamp01(selection.x - 0.005),
-      y: clamp01(selection.y - 0.005),
-      width: 0.01,
-      height: 0.01,
-      coordinate_space: 'normalized',
-      mode: 'crosshair',
-      center_x: selection.x,
-      center_y: selection.y
-    }
-  };
-}
-
-function updateVisionCameraOptions(selectedDeviceId = ''){
-  const previous = selectedDeviceId || visionState.currentDeviceId || visionCameraSelect.value || '';
-  visionCameraSelect.innerHTML = '<option value="">Select browser camera</option>';
-  visionState.devices.forEach((device, index) => {
-    const option = document.createElement('option');
-    option.value = device.deviceId || '';
-    option.textContent = device.label || `Camera ${index + 1}`;
-    visionCameraSelect.appendChild(option);
-  });
-  if(previous && visionState.devices.some(device => device.deviceId === previous)){
-    visionCameraSelect.value = previous;
-  }
-}
-
-async function refreshVisionDevices(){
-  if(!navigator.mediaDevices?.enumerateDevices) return [];
-  try{
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    visionState.devices = devices.filter(device => device.kind === 'videoinput');
-    updateVisionCameraOptions();
-  }catch(err){
-    console.warn('Camera enumeration failed', err);
-  }
-  return visionState.devices;
-}
-
-function stopVisionStream(){
-  if(visionState.heartbeatTimer){
-    clearInterval(visionState.heartbeatTimer);
-    visionState.heartbeatTimer = null;
-  }
-  if(visionState.assistTimer){
-    clearInterval(visionState.assistTimer);
-    visionState.assistTimer = null;
-  }
-  if(visionState.stream){
-    visionState.stream.getTracks().forEach(track => {
-      try{ track.stop(); }catch(e){}
-    });
-  }
-  visionState.stream = null;
-  if(visionPreview) visionPreview.srcObject = null;
-}
-
-async function startVisionStream(options = {}){
-  if(!navigator.mediaDevices?.getUserMedia){
-    throw new Error('Browser camera access is unavailable in this browser.');
-  }
-  const requestedDeviceId = options.deviceId || visionCameraSelect.value || visionState.currentDeviceId || '';
-  const constraints = requestedDeviceId
-    ? { video: { deviceId: { exact: requestedDeviceId } }, audio: false }
-    : { video: { facingMode: { ideal: 'environment' } }, audio: false };
-  const stream = await navigator.mediaDevices.getUserMedia(constraints);
-  stopVisionStream();
-  visionState.stream = stream;
-  visionPreview.srcObject = stream;
-  await visionPreview.play().catch(() => {});
-  const track = stream.getVideoTracks()[0];
-  const settings = track?.getSettings?.() || {};
-  visionState.currentDeviceId = settings.deviceId || requestedDeviceId || '';
-  await refreshVisionDevices();
-  const matched = visionState.devices.find(device => device.deviceId === visionState.currentDeviceId);
-  visionState.currentDeviceLabel = matched?.label || track?.label || 'Browser Camera';
-  updateVisionCameraOptions(visionState.currentDeviceId);
-  clearVisionSelection();
-  startVisionHeartbeat();
-  if(visionState.assistActive) setAssistActive(true);
-  setVisionStatus(`Live preview ready on ${visionState.currentDeviceLabel}. Select a region to inspect.`);
-}
-
-async function ensureVisionStream(){
-  if(visionState.stream) return;
-  await startVisionStream();
-}
-
-async function captureVisionFrame(){
-  await ensureVisionStream();
-  for(let attempt = 0; attempt < 3; attempt++){
-    if(visionPreview.readyState >= 2 && visionPreview.videoWidth > 0 && visionPreview.videoHeight > 0){
-      visionCanvas.width = visionPreview.videoWidth;
-      visionCanvas.height = visionPreview.videoHeight;
-      const ctx = visionCanvas.getContext('2d');
-      ctx.drawImage(visionPreview, 0, 0, visionCanvas.width, visionCanvas.height);
-      const dataUrl = visionCanvas.toDataURL('image/jpeg', 0.88);
-      if(dataUrl && dataUrl.length > 128){
-        return dataUrl;
-      }
-    }
-    await new Promise(resolve => setTimeout(resolve, 120 * (attempt + 1)));
-  }
-  throw new Error('Unable to capture a browser camera frame from the active preview.');
-}
-
-async function postVision(endpoint, payload){
-  const response = await fetch(endpoint, {
-    method:'POST',
-    headers: visionJsonHeaders(),
-    credentials:'include',
-    body: JSON.stringify(payload)
-  });
-  const result = await response.json().catch(() => ({}));
-  if(!response.ok || result.ok === false || result.success === false){
-    throw new Error(result.message || result.error || `Vision request failed (${response.status})`);
-  }
-  return result;
-}
-
-async function sendVisionHeartbeat(){
-  if(!visionState.stream || visionState.heartbeatInFlight) return;
-  visionState.heartbeatInFlight = true;
-  try{
-    const imageDataUrl = await captureVisionFrame();
-    await postVision(VISION_PREVIEW_ENDPOINT, {
-      camera_id: 'browser',
-      image_data_url: imageDataUrl,
-      browser_camera_permission_state: 'granted',
-      browser_camera_device_id: visionState.currentDeviceId,
-      browser_camera_label: visionState.currentDeviceLabel,
-      run_detection: false,
-      event_kind: 'hud_preview',
-      ...selectionTargetPayload()
-    });
-  }catch(err){
-    console.warn('Preview heartbeat failed', err);
-    setVisionStatus(err.message || 'Preview heartbeat failed.');
-  }finally{
-    visionState.heartbeatInFlight = false;
-  }
-}
-
-function startVisionHeartbeat(){
-  if(visionState.heartbeatTimer) clearInterval(visionState.heartbeatTimer);
-  sendVisionHeartbeat();
-  visionState.heartbeatTimer = setInterval(() => {
-    sendVisionHeartbeat();
-  }, VISION_HEARTBEAT_INTERVAL_MS);
-}
-
-function buildAssistSignature(result){
-  const perception = result.perception || {};
-  const attention = perception.attention || {};
-  const memory = perception.memory || {};
-  const assist = result.assist_observation || {};
-  const subject = attention.attended_subject || {};
-  return JSON.stringify({
-    latest_event: memory.latest_event || '',
-    certainty: assist.certainty || '',
-    presented_label: (assist.identified_target || subject.label || '').toLowerCase(),
-    target_region_used: !!assist.target_region_used,
-    needs_clarification: !!assist.needs_clarification,
-    continuity_state: attention.continuity_state || '',
-    narration: assist.narration || assist.summary || ''
-  });
-}
-
-function updateVisionResultStatus(result){
-  const diagnostics = result.recognition?.diagnostics || {};
-  const selection = visionState.selection;
-  const selectionLabel = selection ? (selection.mode === 'box' ? 'box' : 'crosshair') : 'none';
-  const fallbackMode = diagnostics.target_primary_in_region
-    ? 'region match'
-    : (diagnostics.target_region_fallback_focus ? 'region held for retry' : 'region fallback');
-  const summary = result.assist_observation?.summary || result.summary || 'Vision update complete.';
-  setVisionStatus(`${summary} Selection: ${selectionLabel}. ${diagnostics.target_region_applied ? fallbackMode : 'scene focus'}.`);
-}
-
-async function performVisionInspect(options = {}){
-  await ensureVisionStream();
-  if(!visionState.selection){
-    throw new Error('Select a crosshair point or box before using inspect or assist.');
-  }
-  const imageDataUrl = await captureVisionFrame();
-  const assist = !!options.assist;
-  if(assist && !visionState.assistSessionId){
-    visionState.assistSessionId = `assist-${Date.now()}`;
-  }
-  const result = await postVision(VISION_INSPECT_ENDPOINT, {
-    camera_id: 'browser',
-    image_data_url: imageDataUrl,
-    browser_camera_permission_state: 'granted',
-    browser_camera_device_id: visionState.currentDeviceId,
-    browser_camera_label: visionState.currentDeviceLabel,
-    intent: 'inspect_target',
-    workflow_mode: assist ? 'assist' : 'inspect',
-    assist_mode: assist,
-    assist_session_id: assist ? visionState.assistSessionId : '',
-    workflow_action: assist ? 'update' : 'inspect',
-    ...selectionTargetPayload()
-  });
-  updateVisionResultStatus(result);
-  const assistObservation = result.assist_observation || {};
-  const message = assistObservation.narration || assistObservation.summary || result.summary || '';
-  if(!message) return result;
-  if(!assist){
-    addMessage(message, 'jarvis');
-    return result;
-  }
-  visionState.assistFailureCount = 0;
-  const signature = buildAssistSignature(result);
-  const now = Date.now();
-  if(signature !== visionState.lastAssistSignature || now - visionState.lastAssistAt >= 12000){
-    addMessage(message, 'jarvis');
-    visionState.lastAssistSignature = signature;
-    visionState.lastAssistText = message;
-    visionState.lastAssistAt = now;
-  }
-  return result;
-}
-
-function syncAssistButton(){
-  visionAssistBtn.textContent = visionState.assistActive ? 'STOP ASSIST' : 'START ASSIST';
-  visionAssistBtn.classList.toggle('active', visionState.assistActive);
-}
-
-function setAssistActive(active){
-  visionState.assistActive = !!active;
-  if(visionState.assistTimer){
-    clearInterval(visionState.assistTimer);
-    visionState.assistTimer = null;
-  }
-  if(!visionState.assistActive){
-    visionState.assistSessionId = '';
-    visionState.assistFailureCount = 0;
-    visionState.lastAssistSignature = '';
-    syncAssistButton();
-    return;
-  }
-  visionState.assistFailureCount = 0;
-  syncAssistButton();
-  const tick = async () => {
-    if(visionState.assistInFlight) return;
-    if(!visionState.selection) {
-      setAssistActive(false);
-      setVisionStatus('Assist stopped because the selected region was cleared. Re-select a target to resume.');
-      return;
-    }
-    visionState.assistInFlight = true;
-    try{
-      await performVisionInspect({ assist: true });
-    }catch(err){
-      visionState.assistFailureCount += 1;
-      setVisionStatus(err.message || 'Assist update failed.');
-      if(visionState.assistFailureCount >= 3){
-        setAssistActive(false);
-        addMessage('Assist stopped after repeated camera or inspect failures. Re-select the target and start assist again when ready.', 'jarvis');
-      }
-    }finally{
-      visionState.assistInFlight = false;
-    }
-  };
-  visionState.assistTimer = setInterval(tick, VISION_ASSIST_INTERVAL_MS);
-  tick();
-}
-
-function shiftVisionSelection(dx, dy){
-  if(!visionState.selection){
-    visionState.selection = visionState.selectionMode === 'box'
-      ? { mode: 'box', x: 0.35, y: 0.35, width: 0.3, height: 0.3 }
-      : { mode: 'crosshair', x: 0.5, y: 0.5 };
-  }
-  if(visionState.selection.mode === 'box'){
-    visionState.selection.x = clamp01(visionState.selection.x + dx);
-    visionState.selection.y = clamp01(visionState.selection.y + dy);
-    visionState.selection.x = Math.min(visionState.selection.x, 1 - visionState.selection.width);
-    visionState.selection.y = Math.min(visionState.selection.y, 1 - visionState.selection.height);
-  }else{
-    visionState.selection.x = clamp01(visionState.selection.x + dx);
-    visionState.selection.y = clamp01(visionState.selection.y + dy);
-  }
-  renderVisionSelection();
-}
-
-function pointerPosition(event){
-  const rect = visionOverlay.getBoundingClientRect();
-  if(!rect.width || !rect.height) return null;
-  return {
-    x: clamp01((event.clientX - rect.left) / rect.width),
-    y: clamp01((event.clientY - rect.top) / rect.height)
-  };
-}
-
-visionOverlay.addEventListener('pointerdown', event => {
-  const point = pointerPosition(event);
-  if(!point) return;
-  if(typeof visionOverlay.setPointerCapture === 'function'){
-    try{ visionOverlay.setPointerCapture(event.pointerId); }catch(e){}
-  }
-  if(visionState.selectionMode === 'box'){
-    visionState.dragStart = point;
-    visionState.selection = { mode: 'box', x: point.x, y: point.y, width: 0.001, height: 0.001 };
-  }else{
-    visionState.selection = { mode: 'crosshair', x: point.x, y: point.y };
-  }
-  renderVisionSelection();
-});
-
-visionOverlay.addEventListener('pointermove', event => {
-  if(visionState.selectionMode !== 'box' || !visionState.dragStart) return;
-  const point = pointerPosition(event);
-  if(!point) return;
-  const left = Math.min(visionState.dragStart.x, point.x);
-  const top = Math.min(visionState.dragStart.y, point.y);
-  visionState.selection = {
-    mode: 'box',
-    x: left,
-    y: top,
-    width: Math.max(Math.abs(point.x - visionState.dragStart.x), 0.01),
-    height: Math.max(Math.abs(point.y - visionState.dragStart.y), 0.01)
-  };
-  renderVisionSelection();
-});
-
-visionOverlay.addEventListener('pointerup', event => {
-  if(visionState.selectionMode === 'box'){
-    visionState.dragStart = null;
-    renderVisionSelection();
-    return;
-  }
-  const point = pointerPosition(event);
-  if(!point) return;
-  visionState.selection = { mode: 'crosshair', x: point.x, y: point.y };
-  renderVisionSelection();
-});
-
-visionOverlay.addEventListener('pointercancel', () => {
-  if(visionState.dragStart && visionState.selection?.mode === 'box'){
-    clearVisionSelection();
-  }
-  visionState.dragStart = null;
-});
-
-visionOverlay.addEventListener('lostpointercapture', () => {
-  if(visionState.dragStart && visionState.selection?.mode === 'box'){
-    clearVisionSelection();
-  }
-  visionState.dragStart = null;
-});
-
-visionOverlay.addEventListener('keydown', event => {
-  const step = event.shiftKey ? 0.05 : 0.02;
-  if(event.key === 'Escape'){
-    clearVisionSelection();
-    event.preventDefault();
-    return;
-  }
-  if(event.key === 'Enter' || event.key === ' '){
-    if(!visionState.selection){
-      visionState.selection = visionState.selectionMode === 'box'
-        ? { mode: 'box', x: 0.35, y: 0.35, width: 0.3, height: 0.3 }
-        : { mode: 'crosshair', x: 0.5, y: 0.5 };
-      renderVisionSelection();
-    }
-    event.preventDefault();
-    return;
-  }
-  if(event.key === 'ArrowLeft'){ shiftVisionSelection(-step, 0); event.preventDefault(); }
-  if(event.key === 'ArrowRight'){ shiftVisionSelection(step, 0); event.preventDefault(); }
-  if(event.key === 'ArrowUp'){ shiftVisionSelection(0, -step); event.preventDefault(); }
-  if(event.key === 'ArrowDown'){ shiftVisionSelection(0, step); event.preventDefault(); }
-});
-
-visionStartBtn.addEventListener('click', async () => {
-  try{
-    await startVisionStream({ deviceId: visionCameraSelect.value || '' });
-  }catch(err){
-    setVisionStatus(err.message || 'Unable to start browser camera.');
-  }
-});
-
-visionCameraSelect.addEventListener('change', async () => {
-  if(!visionCameraSelect.value) return;
-  try{
-    await startVisionStream({ deviceId: visionCameraSelect.value });
-  }catch(err){
-    setVisionStatus(err.message || 'Unable to switch browser camera.');
-  }
-});
-
-visionSwitchBtn.addEventListener('click', async () => {
-  try{
-    await refreshVisionDevices();
-    if(visionState.devices.length <= 1){
-      setVisionStatus('Only one browser camera is currently available.');
-      return;
-    }
-    const currentIndex = Math.max(visionState.devices.findIndex(device => device.deviceId === visionState.currentDeviceId), 0);
-    const nextDevice = visionState.devices[(currentIndex + 1) % visionState.devices.length];
-    clearVisionSelection();
-    await startVisionStream({ deviceId: nextDevice.deviceId });
-  }catch(err){
-    setVisionStatus(err.message || 'Unable to switch browser camera.');
-  }
-});
-
-visionCrosshairBtn.addEventListener('click', ()=> setVisionSelectionMode('crosshair'));
-visionBoxBtn.addEventListener('click', ()=> setVisionSelectionMode('box'));
-visionClearBtn.addEventListener('click', () => {
-  clearVisionSelection();
-  setVisionStatus('Selection cleared.');
-});
-
-visionInspectBtn.addEventListener('click', async () => {
-  try{
-    await performVisionInspect({ assist: false });
-  }catch(err){
-    setVisionStatus(err.message || 'Inspect failed.');
-    addMessage(err.message || 'Inspect failed.', 'jarvis');
-  }
-});
-
-visionAssistBtn.addEventListener('click', () => setAssistActive(!visionState.assistActive));
-
-if(navigator.mediaDevices?.addEventListener){
-  navigator.mediaDevices.addEventListener('devicechange', () => {
-    refreshVisionDevices();
-  });
-}
-
 const fileUpload = document.getElementById('file-upload');
 const fileName = document.getElementById('file-name');
 const progressBar = document.getElementById('upload-progress-bar');
@@ -1903,6 +1239,7 @@ async function uploadSelectedFile(file){
 
   const authToken = cookieGet('jarvis_mark3_session') || cookieGet('jarvis_user_token') || '';
   const headers = {};
+  if(authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
   const response = await fetch(FILE_UPLOAD_ENDPOINT, {
     method:'POST',
@@ -1990,6 +1327,7 @@ async function saveSettings(payload){
   const headers = {
     'Content-Type': 'application/json'
   };
+  if(authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
   const response = await fetch(AUTH_SETTINGS_ENDPOINT, {
     method:'POST',
@@ -2060,8 +1398,6 @@ window.addEventListener('click', async function initOnce(){
   if(audioCtx && audioCtx.state === 'suspended'){
     try{ await audioCtx.resume(); }catch(e){}
   }
-  await refreshVisionDevices();
-  if(!visionState.stream) setVisionStatus('Tap START CAMERA to enable browser vision.');
   if(!ws || ws.readyState !== WebSocket.OPEN) connectWS();
 });
 
@@ -2069,10 +1405,7 @@ window._jarvisHUD = {
   connectWS,
   sendManual,
   setAllAudioMuted,
-  saveSettings,
-  performVisionInspect,
-  startVisionStream,
-  toggleAssist: () => setAssistActive(!visionState.assistActive)
+  saveSettings
 };
 </script>
 </body>
