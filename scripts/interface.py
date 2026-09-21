@@ -7,6 +7,7 @@ import re
 import zipfile
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
 from flask import Flask, request, jsonify, send_from_directory, make_response
@@ -71,6 +72,17 @@ SUPPORTED_UPLOAD_SCOPES = {"personal", "global"}
 
 def _json_error(message: str, status: int = 400):
     return jsonify({"success": False, "message": message}), status
+
+
+def _same_origin_post_required():
+    expected = urlparse(request.host_url)
+    origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
+    if not origin:
+        return None
+    received = urlparse(origin)
+    if received.scheme != expected.scheme or received.netloc != expected.netloc:
+        return _json_error("Cross-site request blocked.", 403)
+    return None
 
 
 def _session_token_from_request():
@@ -1096,6 +1108,9 @@ def route_vision_cameras():
     user = _current_user()
     if not user:
         return _json_error("Not authenticated.", 401)
+    csrf_error = _same_origin_post_required()
+    if csrf_error:
+        return csrf_error
     try:
         result = eyes_request(_vision_payload(user, "list_cameras"))
     except Exception:
@@ -1110,6 +1125,9 @@ def route_vision_preview():
     user = _current_user()
     if not user:
         return _json_error("Not authenticated.", 401)
+    csrf_error = _same_origin_post_required()
+    if csrf_error:
+        return csrf_error
     try:
         result = eyes_request(_vision_payload(user, "preview_frame_heartbeat"))
     except Exception:
@@ -1124,6 +1142,9 @@ def route_vision_inspect():
     user = _current_user()
     if not user:
         return _json_error("Not authenticated.", 401)
+    csrf_error = _same_origin_post_required()
+    if csrf_error:
+        return csrf_error
     try:
         result = eyes_request(_vision_payload(user, "inspect_object"))
     except Exception:

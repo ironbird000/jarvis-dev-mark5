@@ -727,7 +727,7 @@ input[type="range"]::-webkit-slider-thumb{
           <div class="vision-stage">
             <video id="vision-preview" autoplay playsinline muted></video>
             <canvas id="vision-capture-canvas" class="hidden-input"></canvas>
-            <div id="vision-overlay">
+            <div id="vision-overlay" tabindex="0" aria-label="Browser vision selection overlay. Click or drag to choose a target. Use arrow keys to move the target, Enter to place it, and Escape to clear it.">
               <div id="vision-selection-box"></div>
               <div id="vision-crosshair"></div>
             </div>
@@ -937,6 +937,9 @@ const visionState = {
   assistTimer: null,
   assistSessionId: '',
   assistActive: false,
+  heartbeatInFlight: false,
+  assistInFlight: false,
+  assistFailureCount: 0,
   lastAssistSignature: '',
   lastAssistText: '',
   lastAssistAt: 0
@@ -1397,10 +1400,11 @@ function clamp01(value){
   return Math.max(0, Math.min(1, value));
 }
 
-function visionAuthHeaders(){
-  const authToken = cookieGet('jarvis_mark3_session') || cookieGet('jarvis_user_token') || '';
-  const headers = { 'Content-Type': 'application/json' };
-  return headers;
+function visionJsonHeaders(){
+  return {
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest'
+  };
 }
 
 function clearVisionSelection(){
@@ -1497,6 +1501,14 @@ async function refreshVisionDevices(){
 }
 
 function stopVisionStream(){
+  if(visionState.heartbeatTimer){
+    clearInterval(visionState.heartbeatTimer);
+    visionState.heartbeatTimer = null;
+  }
+  if(visionState.assistTimer){
+    clearInterval(visionState.assistTimer);
+    visionState.assistTimer = null;
+  }
   if(visionState.stream){
     visionState.stream.getTracks().forEach(track => {
       try{ track.stop(); }catch(e){}
@@ -1528,6 +1540,7 @@ async function startVisionStream(options = {}){
   updateVisionCameraOptions(visionState.currentDeviceId);
   clearVisionSelection();
   startVisionHeartbeat();
+  if(visionState.assistActive) setAssistActive(true);
   setVisionStatus(`Live preview ready on ${visionState.currentDeviceLabel}. Select a region to inspect.`);
 }
 
@@ -1557,19 +1570,20 @@ async function captureVisionFrame(){
 async function postVision(endpoint, payload){
   const response = await fetch(endpoint, {
     method:'POST',
-    headers: visionAuthHeaders(),
+    headers: visionJsonHeaders(),
     credentials:'include',
     body: JSON.stringify(payload)
   });
   const result = await response.json().catch(() => ({}));
-  if(!response.ok || result.ok === false){
+  if(!response.ok || result.ok === false || result.success === false){
     throw new Error(result.message || result.error || `Vision request failed (${response.status})`);
   }
   return result;
 }
 
 async function sendVisionHeartbeat(){
-  if(!visionState.stream) return;
+  if(!visionState.stream || visionState.heartbeatInFlight) return;
+  visionState.heartbeatInFlight = true;
   try{
     const imageDataUrl = await captureVisionFrame();
     await postVision(VISION_PREVIEW_ENDPOINT, {
@@ -1585,11 +1599,14 @@ async function sendVisionHeartbeat(){
   }catch(err){
     console.warn('Preview heartbeat failed', err);
     setVisionStatus(err.message || 'Preview heartbeat failed.');
+  }finally{
+    visionState.heartbeatInFlight = false;
   }
 }
 
 function startVisionHeartbeat(){
   if(visionState.heartbeatTimer) clearInterval(visionState.heartbeatTimer);
+  sendVisionHeartbeat();
   visionState.heartbeatTimer = setInterval(() => {
     sendVisionHeartbeat();
   }, VISION_HEARTBEAT_INTERVAL_MS);
@@ -1616,7 +1633,9 @@ function updateVisionResultStatus(result){
   const diagnostics = result.recognition?.diagnostics || {};
   const selection = visionState.selection;
   const selectionLabel = selection ? (selection.mode === 'box' ? 'box' : 'crosshair') : 'none';
-  const fallbackMode = diagnostics.target_primary_in_region ? 'region match' : 'region fallback';
+  const fallbackMode = diagnostics.target_primary_in_region
+    ? 'region match'
+    : (diagnostics.target_region_fallback_focus ? 'region held for retry' : 'region fallback');
   const summary = result.assist_observation?.summary || result.summary || 'Vision update complete.';
   setVisionStatus(`${summary} Selection: ${selectionLabel}. ${diagnostics.target_region_applied ? fallbackMode : 'scene focus'}.`);
 }
@@ -1652,6 +1671,7 @@ async function performVisionInspect(options = {}){
     addMessage(message, 'jarvis');
     return result;
   }
+  visionState.assistFailureCount = 0;
   const signature = buildAssistSignature(result);
   const now = Date.now();
   if(signature !== visionState.lastAssistSignature || now - visionState.lastAssistAt >= 12000){
@@ -1676,24 +1696,54 @@ function setAssistActive(active){
   }
   if(!visionState.assistActive){
     visionState.assistSessionId = '';
+    visionState.assistFailureCount = 0;
     visionState.lastAssistSignature = '';
     syncAssistButton();
     return;
   }
+  visionState.assistFailureCount = 0;
   syncAssistButton();
   const tick = async () => {
+    if(visionState.assistInFlight) return;
     if(!visionState.selection) {
-      setVisionStatus('Assist is waiting for a selected region after the latest camera change.');
+      setAssistActive(false);
+      setVisionStatus('Assist stopped because the selected region was cleared. Re-select a target to resume.');
       return;
     }
+    visionState.assistInFlight = true;
     try{
       await performVisionInspect({ assist: true });
     }catch(err){
+      visionState.assistFailureCount += 1;
       setVisionStatus(err.message || 'Assist update failed.');
+      if(visionState.assistFailureCount >= 3){
+        setAssistActive(false);
+        addMessage('Assist stopped after repeated camera or inspect failures. Re-select the target and start assist again when ready.', 'jarvis');
+      }
+    }finally{
+      visionState.assistInFlight = false;
     }
   };
   visionState.assistTimer = setInterval(tick, VISION_ASSIST_INTERVAL_MS);
   tick();
+}
+
+function shiftVisionSelection(dx, dy){
+  if(!visionState.selection){
+    visionState.selection = visionState.selectionMode === 'box'
+      ? { mode: 'box', x: 0.35, y: 0.35, width: 0.3, height: 0.3 }
+      : { mode: 'crosshair', x: 0.5, y: 0.5 };
+  }
+  if(visionState.selection.mode === 'box'){
+    visionState.selection.x = clamp01(visionState.selection.x + dx);
+    visionState.selection.y = clamp01(visionState.selection.y + dy);
+    visionState.selection.x = Math.min(visionState.selection.x, 1 - visionState.selection.width);
+    visionState.selection.y = Math.min(visionState.selection.y, 1 - visionState.selection.height);
+  }else{
+    visionState.selection.x = clamp01(visionState.selection.x + dx);
+    visionState.selection.y = clamp01(visionState.selection.y + dy);
+  }
+  renderVisionSelection();
 }
 
 function pointerPosition(event){
@@ -1708,6 +1758,9 @@ function pointerPosition(event){
 visionOverlay.addEventListener('pointerdown', event => {
   const point = pointerPosition(event);
   if(!point) return;
+  if(typeof visionOverlay.setPointerCapture === 'function'){
+    try{ visionOverlay.setPointerCapture(event.pointerId); }catch(e){}
+  }
   if(visionState.selectionMode === 'box'){
     visionState.dragStart = point;
     visionState.selection = { mode: 'box', x: point.x, y: point.y, width: 0.001, height: 0.001 };
@@ -1745,6 +1798,43 @@ visionOverlay.addEventListener('pointerup', event => {
   renderVisionSelection();
 });
 
+visionOverlay.addEventListener('pointercancel', () => {
+  if(visionState.dragStart && visionState.selection?.mode === 'box'){
+    clearVisionSelection();
+  }
+  visionState.dragStart = null;
+});
+
+visionOverlay.addEventListener('lostpointercapture', () => {
+  if(visionState.dragStart && visionState.selection?.mode === 'box'){
+    clearVisionSelection();
+  }
+  visionState.dragStart = null;
+});
+
+visionOverlay.addEventListener('keydown', event => {
+  const step = event.shiftKey ? 0.05 : 0.02;
+  if(event.key === 'Escape'){
+    clearVisionSelection();
+    event.preventDefault();
+    return;
+  }
+  if(event.key === 'Enter' || event.key === ' '){
+    if(!visionState.selection){
+      visionState.selection = visionState.selectionMode === 'box'
+        ? { mode: 'box', x: 0.35, y: 0.35, width: 0.3, height: 0.3 }
+        : { mode: 'crosshair', x: 0.5, y: 0.5 };
+      renderVisionSelection();
+    }
+    event.preventDefault();
+    return;
+  }
+  if(event.key === 'ArrowLeft'){ shiftVisionSelection(-step, 0); event.preventDefault(); }
+  if(event.key === 'ArrowRight'){ shiftVisionSelection(step, 0); event.preventDefault(); }
+  if(event.key === 'ArrowUp'){ shiftVisionSelection(0, -step); event.preventDefault(); }
+  if(event.key === 'ArrowDown'){ shiftVisionSelection(0, step); event.preventDefault(); }
+});
+
 visionStartBtn.addEventListener('click', async () => {
   try{
     await startVisionStream({ deviceId: visionCameraSelect.value || '' });
@@ -1771,10 +1861,8 @@ visionSwitchBtn.addEventListener('click', async () => {
     }
     const currentIndex = Math.max(visionState.devices.findIndex(device => device.deviceId === visionState.currentDeviceId), 0);
     const nextDevice = visionState.devices[(currentIndex + 1) % visionState.devices.length];
-    const assistWasActive = visionState.assistActive;
     clearVisionSelection();
     await startVisionStream({ deviceId: nextDevice.deviceId });
-    if(assistWasActive) setAssistActive(true);
   }catch(err){
     setVisionStatus(err.message || 'Unable to switch browser camera.');
   }
@@ -1964,7 +2052,6 @@ if(window.JarvisSettings){
 
 (async function init(){
   await fetchCurrentUser();
-  await refreshVisionDevices();
   connectWS();
 })();
 
@@ -1973,13 +2060,8 @@ window.addEventListener('click', async function initOnce(){
   if(audioCtx && audioCtx.state === 'suspended'){
     try{ await audioCtx.resume(); }catch(e){}
   }
-  if(!visionState.stream){
-    try{
-      await startVisionStream({ deviceId: visionCameraSelect.value || '' });
-    }catch(e){
-      setVisionStatus('Tap START CAMERA to enable browser vision.');
-    }
-  }
+  await refreshVisionDevices();
+  if(!visionState.stream) setVisionStatus('Tap START CAMERA to enable browser vision.');
   if(!ws || ws.readyState !== WebSocket.OPEN) connectWS();
 });
 
@@ -1990,7 +2072,7 @@ window._jarvisHUD = {
   saveSettings,
   performVisionInspect,
   startVisionStream,
-  setAssistActive
+  toggleAssist: () => setAssistActive(!visionState.assistActive)
 };
 </script>
 </body>

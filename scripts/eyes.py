@@ -1078,20 +1078,16 @@ class EyesService:
             raise ValueError("Browser camera image is required for browser inspection.")
         if "," in raw:
             raw = raw.split(",", 1)[1]
-        last_error = None
-        for attempt in range(FRAME_CAPTURE_MAX_RETRIES):
-            try:
-                buffer = np.frombuffer(base64.b64decode(raw), dtype=np.uint8)
-                frame = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
-            except Exception as exc:
-                frame = None
-                last_error = exc
-            if self._frame_is_usable(frame):
-                return frame
-            if attempt + 1 < FRAME_CAPTURE_MAX_RETRIES:
-                time.sleep(FRAME_CAPTURE_RETRY_DELAY_SECONDS * (attempt + 1))
-        if last_error:
-            raise ValueError(f"Unable to decode browser camera image: {last_error}")
+        try:
+            buffer = np.frombuffer(base64.b64decode(raw), dtype=np.uint8)
+        except Exception as exc:
+            raise ValueError(f"Unable to decode browser camera image: {exc}")
+        try:
+            frame = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+        except Exception as exc:
+            raise ValueError(f"Unable to decode browser camera image: {exc}")
+        if self._frame_is_usable(frame):
+            return frame
         raise ValueError("Unable to decode browser camera image.")
 
     def _capture_frame(self, descriptor: CameraDescriptor, payload: Dict):
@@ -1786,6 +1782,7 @@ class EyesService:
                         "center_proximity": 0.0,
                         "inside_area_ratio": 0.0,
                         "usable_target_evidence": False,
+                        "synthetic_target_region": True,
                     },
                 }
         if best_face:
@@ -2916,6 +2913,7 @@ class EyesService:
                 "target_mode": target_mode,
                 "target_region_expanded": bool(target_region and target_region.get("analysis_pixels") != target_region.get("pixels")),
                 "target_primary_in_region": bool((primary.get("target_metrics") or {}).get("in_target")),
+                "target_region_fallback_focus": bool((primary.get("target_metrics") or {}).get("synthetic_target_region")),
                 "target_primary_centered": bool((primary.get("target_metrics") or {}).get("center_in_target")),
                 "target_primary_overlap_ratio": (primary.get("target_metrics") or {}).get("overlap_ratio"),
                 "target_primary_coverage": (primary.get("target_metrics") or {}).get("target_coverage"),
