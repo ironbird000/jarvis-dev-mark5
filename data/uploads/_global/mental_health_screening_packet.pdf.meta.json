@@ -1,0 +1,14 @@
+{
+  "user_id": 1,
+  "email": "ironbird000@yahoo.com",
+  "display_name": "My Lord",
+  "original_name": "mental_health_screening_packet.pdf",
+  "stored_name": "mental_health_screening_packet.pdf",
+  "stored_path": "/app/jarvis-dev/data/uploads/_global/mental_health_screening_packet.pdf",
+  "mime_type": "application/pdf",
+  "scope": "global",
+  "size_bytes": 4680,
+  "uploaded_at": "2026-09-05T11:42:09.271392Z",
+  "text_extracted": true,
+  "text_preview": "Mental Health Screening & Evaluation Resource\n Packet\nThis informational packet outlines common standardized screening tools used by professionals to help\nidentify symptoms of psychological disorders. Please note: Screening tools are intended to guide\nconversations with a healthcare provider and do not replace a formal clinical diagnosis.\n1. Common Screening Tools & Public Availability\nMany foundational rating scales are in the public domain and widely accessible to the public, while\nother proprietary diagnostic tools require a clinician license to purchase and administer.\nScreening Tool\nTarget Condition\nAvailability Status\nPHQ-9 (Patient Health Questionnaire)\nDepression Severity\nFree / Public Domain\nGAD-7 (Generalized Anxiety Disorder)\nAnxiety Severity\nFree / Public Domain\nASRS (Adult ADHD Self-Report Scale)\nAdult ADHD\nFree (Developed with WHO)\nPCL-5 (PTSD Checklist)\nPTSD Symptoms\nFree (VA National Center)\nMMPI (Minnesota Multiphasic Personality\nInventory)\nPersonality & Psychopathology\nRestricted / Paid Professional Use\n2. Sample Self-Screening Tool: GAD-7 (Anxiety)\nInstruction: Over the last 2 weeks, how often have you been bothered by the following problems? (0 =\nNot at all, 1 = Several days, 2 = More than half the days, 3 = Nearly every day)\n1. Feeling nervous, anxious, or on edge [ 0 ] [ 1 ] [ 2 ] [ 3 ]\n2. Not being able to stop or control worrying [ 0 ] [ 1 ] [ 2 ] [ 3 ]\n3. Worrying too much about different things [ 0 ] [ 1 ] [ 2 ] [ 3 ]\n4. Trouble relaxing [ 0 ] [ 1 ] [ 2 ] [ 3 ]\n5. Being so restless that it is hard to sit still [ 0 ] [ 1 ] [ 2 ] [ 3 ]\n6. Becoming easily annoyed or irritable [ 0 ] [ 1 ] [ 2 ] [ 3 ]\n7. Feeling afraid, as if something awful might happen [ 0 ] [ 1 ] [ 2 ] [ 3 ]\n\n3. Next Steps for Professional Evaluation\n\u007f Consult a Primary Care Provider: Your doctor can perform routine blood work to rule out\nphysical health conditions (like thyroid issues) that mimic mental health symptoms.\n\u007f Connect with a Specialist: Seek out a licensed clinic"
+}

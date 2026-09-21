@@ -1,0 +1,13 @@
+{
+  "user_id": 1,
+  "email": "ironbird000@yahoo.com",
+  "display_name": "Sir",
+  "original_name": "Stephen-Rossini-Resume-newest.docx",
+  "stored_name": "Stephen-Rossini-Resume-newest_20260708_194654_1.docx",
+  "stored_path": "/app/jarvis-dev/data/uploads/1/Stephen-Rossini-Resume-newest_20260708_194654_1.docx",
+  "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "size_bytes": 21992,
+  "uploaded_at": "2026-07-08T19:46:54.844360Z",
+  "text_extracted": true,
+  "text_preview": "Stephen J. Rossini\nPittsburgh, PA - 412-999-7375 - Ironbird000@Yahoo.com\nSenior Linux Administrator (Tailored for FBI - Special Agent: STEM-Engineering Background)\nProfessional Summary\nSenior Unix/Linux Administrator with 25+ years of enterprise-scale experience, specializing in Red Hat Enterprise Linux. Deep background in virtualization (VMware vCenter, Solaris Zones), automation (shell scripting, exposure to Ansible), performance monitoring/tuning, and root cause analysis across mission-critical environments. Effective collaborator with application, database, and infrastructure teams, experienced in hardware platforms including Cisco UCS and storage ecosystems. Comfortable supporting physical, virtual, and hybrid cloud infrastructure while driving operational excellence and reliability.\nCore Skills\nLinux: Red Hat Enterprise Linux (RHEL) administration, patching, troubleshooting\nVirtualization: VMware vCenter, vSphere; Solaris Zones/ Containers\nAutomation: Bash/Korn shell scripting, cron; Ansible (working knowledge)\nPerformance & RCA: system monitoring, performance tuning, incident/problem management\nHardware: Cisco UCS blades/servers; Brocade fibre switches, HP and Sun RISC architecture\nBackup & DR: Veritas NetBackup; EMC/Legato Networker, ACSLS tape libraries; disaster recovery testing\nStorage: EMC Symmetrix/ Connectrix; ZFS; PowerPath\nITSM & Ops: ServiceNow, operational runbooks, RCAs\nSecurity: DoD STIG hardening; patch and kernel maintenance\nBNY - Pittsburgh, PA\nSenior level Unix/Linux Administrator | Dec 2016-Present\nAdminister and support enterprise Linux (RHEL) and Solaris environments across physical and virtual infrastructure.\nMonitor and resolve Service Now incidents/problems; perform root cause analysis and develop corrective actions.\nCollaborate with Application and Database teams to deliver O$-level support for production and non-production workloads.\nExecute patching, maintenance, and performance tuning to improve stability and uptime.\nDocument and ma"
+}

@@ -1,0 +1,9 @@
+
+# Local runtime/vector data
+data/chroma/
+run/*.pid
+data/logs/
+.venv/
+__pycache__/
+*.pyc
+.env.jarvis

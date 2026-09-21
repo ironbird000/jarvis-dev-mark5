@@ -1,0 +1,14 @@
+{
+  "user_id": 1,
+  "email": "ironbird000@yahoo.com",
+  "display_name": "My Lord",
+  "original_name": "NCSC-TG-005 Trusted Network Interpretation.pdf",
+  "stored_name": "NCSC-TG-005_Trusted_Network_Interpretation.pdf",
+  "stored_path": "/app/jarvis-dev/data/uploads/_global/NCSC-TG-005_Trusted_Network_Interpretation.pdf",
+  "mime_type": "application/pdf",
+  "scope": "global",
+  "size_bytes": 780326,
+  "uploaded_at": "2026-07-14T16:05:43.647073Z",
+  "text_extracted": true,
+  "text_preview": "The Rainbow Books\nTrusted Network Interpretation\n                                                 NCSC-TG-005\n                                        Library No. S228,526\n                                                   Version 1\n                          FOREWORD\n     This publication is issued  by  the  National  Computer\nSecurity  Center (NCSC) as part of its program to promulgate\ntechnical computer security guidelines. The  interpretations\nextend the evaluation classes of the Trusted Systems Evalua-\ntion Criteria (DOD 5200.28-STD) to trusted  network  systems\nand components.\n     This document will be used for a period of at least one\nyear  after  date of signature.  During this period the NCSC\nwill gain experience using the Trusted  Network  Interpreta-\ntion  in several network evaluations.  In addition, the NCSC\nwill conduct a series of tutorials and workshops to  educate\nthe   community  on  the  details  of  the  Trusted  Network\nInterpretation  and  receive  feedback.   After  this  trial\nperiod, necessary changes to the document will be made and a\nrevised version issued.\n     Workshops and tutorials will be open to any  member  of\nthe network security community interested in providing feed-\nback.  Anyone wishing more information, or wishing  to  pro-\nvide  comments  on  the  usefulness  or  correctness  of the\nTrusted Network Interpretation may contact:  Chief,  Techni-\ncal  Guidelines Division, National Computer Security Center,\nFt.  George G. Meade, MD  20755-6000, ATTN: C11.  The  tele-\nphone number is (301) 859-4452.\n______________________________________________\nPATRICK R. GALLAGHER, JR.          31 July 1987\nDirector\nNational Computer Security Center\n                       ACKNOWLEDGMENT\nNCSC-TG-005 Trusted Network Interpretation https://irp.fas.org/nsa/rainbow/tg005.htm\n1 of 256 7/14/26, 11:59\n\n______________\n     Acknowledgment is extended to the members of the  Work-\ning  Group  who produced this Interpretation.  Members were:\nAlfred Arsenault, "
+}

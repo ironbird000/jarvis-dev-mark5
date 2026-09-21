@@ -1,0 +1,14 @@
+{
+  "user_id": 1,
+  "email": "ironbird000@yahoo.com",
+  "display_name": "My Lord",
+  "original_name": "National-Security-Archive-Department-of-Defense.pdf",
+  "stored_name": "National-Security-Archive-Department-of-Defense.pdf",
+  "stored_path": "/app/jarvis-dev/data/uploads/_global/National-Security-Archive-Department-of-Defense.pdf",
+  "mime_type": "application/pdf",
+  "scope": "global",
+  "size_bytes": 245471,
+  "uploaded_at": "2026-07-14T16:06:43.257182Z",
+  "text_extracted": true,
+  "text_preview": "DoD 5200.28-STD\n Supersedes\n CSC-STD-00l-83, dtd l5 Aug 83\n Library No. S225,7ll\n DEPARTMENT OF DEFENSE STANDARD\n DEPARTMENT OF\n DEFENSE\n TRUSTED COMPUTER\n SYSTEM EVALUATION\n CRITERIA\n DECEMBER l985\n December 26, l985\n \nPage 1\n\n_________________________________ \n FOREWORD\n \nThis publication, DoD 5200.28-STD, \"Department of Defense Trusted Computer\n \nSystem Evaluation Criteria,\" is issued under the authority of an in accordance\n \nwith DoD Directive 5200.28, \"Security Requirements for Automatic Data\n \nProcessing (ADP) Systems,\" and in furtherance of responsibilities assigned by\n \nDoD Directive 52l5.l, \"Computer Security Evaluation Center.\" Its purpose is\n \nto provide technical hardware/firmware/software security criteria and\n \nassociated technical evaluation methodologies in support of the overall ADP\n \nsystem security policy, evaluation and approval/accreditation responsibilities\n \npromulgated by DoD Directive 5200.28.\n \nThe provisions of this document apply to the Office of the Secretary of\n \nDefense (ASD), the Military Departments, the Organization of the Joint\n \nChiefs of Staff, the Unified and Specified Commands, the Defense Agencies\n \nand activities administratively supported by OSD (hereafter called \"DoD\n \nComponents\").\n \nThis publication is effective immediately and is mandatory for use by all DoD\n \nComponents in carrying out ADP system technical security evaluation activities\n \napplicable to the processing and storage of classified and other sensitive DoD\n \ninformation and applications as set forth herein.\n \nRecommendations for revisions to this publication are encouraged and will be\n \nreviewed biannually by the National Computer Security Center through a formal\n \nreview process. Address all proposals for revision through appropriate\n \nchannels to: National Computer Security Center, Attention: Chief, Computer\n \nSecurity Standards.\n \nDoD Components may obtain copies of this publication through their own\n \npublications channels. Other federal agencies and the p"
+}
