@@ -24,6 +24,7 @@ from config import (
     ensure_directories,
     BRAIN_SOCKET,
     EARS_SOCKET,
+    EYES_SOCKET,
     MOUTH_SOCKET,
     ADMIN_EMAILS,
 )
@@ -493,6 +494,30 @@ def ears_request(payload: dict) -> dict:
 
 def mouth_request(payload: dict) -> dict:
     return socket_request(MOUTH_SOCKET, payload, recv_size=1024 * 1024)
+
+
+def eyes_request(payload: dict) -> dict:
+    return socket_request(EYES_SOCKET, payload, recv_size=4 * 1024 * 1024)
+
+
+def _vision_payload(user: dict, action: str) -> dict:
+    payload = request.get_json(force=True, silent=True) or {}
+    if not isinstance(payload, dict):
+        payload = {}
+    payload = dict(payload)
+    payload["action"] = payload.get("action") or action
+    payload["user_id"] = user.get("user_id")
+    payload["email"] = user.get("email", "")
+    payload["is_admin"] = _is_admin(user)
+    return payload
+
+
+def _vision_http_status(result: dict) -> int:
+    try:
+        status_code = int((result or {}).get("status_code") or 200)
+    except (TypeError, ValueError, AttributeError):
+        status_code = 200
+    return status_code if 100 <= status_code <= 599 else 200
 
 
 @app.route("/")
@@ -1063,6 +1088,48 @@ def route_search_documents():
         "query": query,
         "results": results
     })
+
+
+@app.route("/api/vision/cameras", methods=["POST"])
+@app.route("/dev-mark3/api/vision/cameras", methods=["POST"])
+def route_vision_cameras():
+    user = _current_user()
+    if not user:
+        return _json_error("Not authenticated.", 401)
+    try:
+        result = eyes_request(_vision_payload(user, "list_cameras"))
+    except Exception:
+        logging.exception("Eyes list_cameras request failed")
+        return _json_error("Vision service unavailable.", 503)
+    return jsonify(result), _vision_http_status(result)
+
+
+@app.route("/api/vision/preview", methods=["POST"])
+@app.route("/dev-mark3/api/vision/preview", methods=["POST"])
+def route_vision_preview():
+    user = _current_user()
+    if not user:
+        return _json_error("Not authenticated.", 401)
+    try:
+        result = eyes_request(_vision_payload(user, "preview_frame_heartbeat"))
+    except Exception:
+        logging.exception("Eyes preview request failed")
+        return _json_error("Vision preview unavailable.", 503)
+    return jsonify(result), _vision_http_status(result)
+
+
+@app.route("/api/vision/inspect", methods=["POST"])
+@app.route("/dev-mark3/api/vision/inspect", methods=["POST"])
+def route_vision_inspect():
+    user = _current_user()
+    if not user:
+        return _json_error("Not authenticated.", 401)
+    try:
+        result = eyes_request(_vision_payload(user, "inspect_object"))
+    except Exception:
+        logging.exception("Eyes inspect request failed")
+        return _json_error("Vision inspection unavailable.", 503)
+    return jsonify(result), _vision_http_status(result)
 
 
 @sock.route("/jarvis-websocket")
