@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Jarvis Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#07111a;
+      --panel:#0d1a26;
+      --panel2:#102130;
+      --line:#1d3447;
+      --text:#eaf7ff;
+      --muted:#9ec3d9;
+      --accent:#63d9ff;
+      --danger:#ff7272;
+      --ok:#7dffba;
+      --warn:#ffd27d;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Segoe UI,Arial,sans-serif;
+      background:linear-gradient(180deg,#050c12,#0a1722 40%,#09131c);
+      color:var(--text);
+    }
+    .wrap{
+      max-width:1200px;
+      margin:0 auto;
+      padding:24px;
+    }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:20px;
+    }
+    h1{
+      margin:0;
+      font-size:28px;
+      letter-spacing:1px;
+    }
+    .actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:40px;
+      padding:0 14px;
+      border-radius:10px;
+      border:1px solid var(--line);
+      background:var(--panel2);
+      color:var(--text);
+      text-decoration:none;
+      cursor:pointer;
+      font-weight:700;
+    }
+    .btn:hover{filter:brightness(1.08)}
+    .btn.primary{border-color:#22597a;color:var(--accent)}
+    .btn.secondary{color:var(--muted)}
+    .btn.danger{border-color:#6a2b2b;color:#ffd0d0}
+    .panel{
+      background:rgba(13,26,38,.92);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:18px;
+      box-shadow:0 10px 30px rgba(0,0,0,.22);
+      margin-bottom:18px;
+    }
+    .muted{color:var(--muted)}
+    .toolbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-bottom:14px;
+    }
+    input, select{
+      min-height:40px;
+      border-radius:10px;
+      border:1px solid var(--line);
+      background:#0a1620;
+      color:var(--text);
+      padding:0 12px;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:14px;
+    }
+    th, td{
+      text-align:left;
+      padding:10px 8px;
+      border-bottom:1px solid rgba(255,255,255,.07);
+      vertical-align:top;
+    }
+    th{color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em}
+    .pill{
+      display:inline-block;
+      padding:4px 8px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:#0b1823;
+      font-size:12px;
+    }
+    .pill.admin{color:#ffd1d1;border-color:#6c3030}
+    .pill.user{color:#cdefff}
+    .pill.enabled{color:var(--ok)}
+    .pill.disabled{color:#ffb4b4}
+    .right{text-align:right}
+    .hidden{display:none !important}
+    .msg{
+      margin-top:10px;
+      color:var(--warn);
+      min-height:20px;
+      white-space:pre-wrap;
+    }
+    .small{font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>Jarvis Admin</h1>
+        <div class="muted">User management and profile controls</div>
+      </div>
+      <div class="actions">
+        <a class="btn secondary" id="back-to-hud-link" href="/dev/hud">Back to HUD</a>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <input id="search-input" type="text" placeholder="Search by name, email, login" style="min-width:280px;">
+        <select id="role-filter">
+          <option value="">All users</option>
+          <option value="admin">Admins only</option>
+          <option value="non-admin">Non-admin only</option>
+        </select>
+        <button id="refresh-btn" class="btn primary" type="button">Refresh</button>
+      </div>
+      <div id="status-msg" class="msg"></div>
+      <div style="overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Identity</th>
+              <th>Role</th>
+              <th>Voice</th>
+              <th>Language</th>
+              <th>Home</th>
+              <th class="right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>

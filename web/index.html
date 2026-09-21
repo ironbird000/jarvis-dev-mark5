@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>J.A.R.V.I.S.-Dev Mark 3 Access</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="css/auth.css" />
+</head>
+<body>
+  <div class="bg">
+    <div class="reactor-stage">
+      <div class="arc-reactor">
+        <div class="reactor-outer"></div>
+        <div class="reactor-mid"></div>
+
+        <div class="reactor-lines">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+
+        <div class="reactor-core">
+          <div class="core-shards">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="core-glow"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <main class="auth-shell">
+    <section class="auth-card">
+      <h1>J.A.R.V.I.S.-Dev</h1>
+      <p class="subtitle">Mark 4</p>
+
+      <form id="auth-form" class="auth-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="username" required />
+        </div>
+
+        <div id="name-row" class="field-grid hidden">
+          <div class="field">
+            <label for="first-name">1st name</label>
+            <input id="first-name" name="first_name" type="text" autocomplete="given-name" />
+          </div>
+
+          <div class="field">
+            <label for="last-name">Last Name</label>
+            <input id="last-name" name="last_name" type="text" autocomplete="family-name" />
+          </div>
+        </div>
+
+        <div id="country-field" class="field hidden">
+          <label for="country">Country</label>
+          <select id="country" name="country">
+            <option value="United States" selected>United States</option>
+            <option value="Canada">Canada</option>
+            <option value="Mexico">Mexico</option>
+            <option value="United Kingdom">United Kingdom</option>
+            <option value="Ireland">Ireland</option>
+            <option value="France">France</option>
+            <option value="Germany">Germany</option>
+            <option value="Italy">Italy</option>
+            <option value="Spain">Spain</option>
+            <option value="Portugal">Portugal</option>
+            <option value="Netherlands">Netherlands</option>
+            <option value="Belgium">Belgium</option>
+            <option value="Switzerland">Switzerland</option>
+            <option value="Austria">Austria</option>
+            <option value="Poland">Poland</option>
+            <option value="Czech Republic">Czech Republic</option>
+            <option value="Slovakia">Slovakia</option>
+            <option value="Hungary">Hungary</option>
+            <option value="Romania">Romania</option>
+            <option value="Bulgaria">Bulgaria</option>
+            <option value="Greece">Greece</option>
+            <option value="Norway">Norway</option>
+            <option value="Sweden">Sweden</option>
+            <option value="Finland">Finland</option>
+            <option value="Denmark">Denmark</option>
+            <option value="Iceland">Iceland</option>
+            <option value="Australia">Australia</option>
+            <option value="New Zealand">New Zealand</option>
+            <option value="Japan">Japan</option>
+            <option value="South Korea">South Korea</option>
+            <option value="India">India</option>
+            <option value="Pakistan">Pakistan</option>
+            <option value="Philippines">Philippines</option>
+            <option value="Singapore">Singapore</option>
+            <option value="Malaysia">Malaysia</option>
+            <option value="Indonesia">Indonesia</option>
+            <option value="Thailand">Thailand</option>
+            <option value="Vietnam">Vietnam</option>
+            <option value="China">China</option>
+            <option value="Taiwan">Taiwan</option>
+            <option value="Hong Kong">Hong Kong</option>
+            <option value="South Africa">South Africa</option>
+            <option value="Nigeria">Nigeria</option>
+            <option value="Kenya">Kenya</option>
+            <option value="Ghana">Ghana</option>
+            <option value="Brazil">Brazil</option>
+            <option value="Argentina">Argentina</option>
+            <option value="Chile">Chile</option>
+            <option value="Colombia">Colombia</option>
+            <option value="Peru">Peru</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        <div id="location-row" class="field-grid hidden">
+          <div class="field">
+            <label for="city">City/Town</label>
+            <input id="city" name="city" type="text" autocomplete="address-level2" />
+          </div>
+
+          <div class="field">
+            <label id="region-label" for="region">State</label>
+            <input id="region" name="region" type="text" autocomplete="address-level1" />
+          </div>
+        </div>
+
+        <div id="postal-row" class="field-grid hidden">
+          <div class="field">
+            <label id="postal-label" for="postal-code">ZIP code</label>
+            <input id="postal-code" name="postal_code" type="text" autocomplete="postal-code" />
+          </div>
+          <div class="field field-spacer"></div>
+        </div>
+
+        <div id="language-field" class="field hidden">
+          <label for="preferred-language">Default Language</label>
+          <select id="preferred-language" name="preferred_language">
+            <option value="auto" selected>Auto-detect</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="nl">Dutch</option>
+            <option value="pl">Polish</option>
+            <option value="ru">Russian</option>
+            <option value="uk">Ukrainian</option>
+            <option value="hi">Hindi</option>
+            <option value="ur">Urdu</option>
+            <option value="ar">Arabic</option>
+            <option value="tr">Turkish</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+          </select>
+        </div>
+
+        <div id="password-field" class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" />
+        </div>
+
+        <div id="confirm-password-field" class="field hidden">
+          <label for="confirm-password">Confirm Password</label>
+          <input id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" />
+        </div>
+
+        <div id="display-name-field" class="field hidden">
+          <label for="display-name">How would you like me to address you</label>
+          <input id="display-name" name="preferred_name" type="text" autocomplete="nickname" />
+        </div>
+
+        <div id="recover-message" class="field hidden">
+          <label>Password Recovery</label>
+          <div class="recover-copy">
+            Enter your email and J.A.R.V.I.S. will send recovery instructions.
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="login-button" class="submit" type="submit">Login</button>
+          <button id="register-button" class="secondary-submit" type="button">New Users</button>
+        </div>
+
+        <button id="forgot-password-link" class="forgot-password-link" type="button">
+          Forgot Password?
+        </button>
+
+        <button id="back-to-login-link" class="forgot-password-link hidden" type="button">
+          Back to Login
+        </button>
+      </form>
+
+      <div id="message" class="message"></div>
+    </section>
+  </main>
+
+  <script src="js/auth.js"></script>
+</body>
+</html>

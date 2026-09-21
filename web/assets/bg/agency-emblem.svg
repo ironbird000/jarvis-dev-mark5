@@ -1,0 +1,52 @@
+<svg width="2200" height="1400" viewBox="0 0 2200 1400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feBlend in="SourceGraphic" in2="blur" mode="multiply"/>
+    </filter>
+  </defs>
+
+  <!-- outer ring -->
+  <circle cx="1100" cy="700" r="360" fill="none" stroke="#090909" stroke-width="34"/>
+  <circle cx="1100" cy="700" r="305" fill="none" stroke="#090909" stroke-width="22"/>
+
+  <!-- custom bird/agency mark -->
+  <g fill="#090909" filter="url(#softShadow)">
+    <!-- top head/crest -->
+    <path d="M1045 455
+             C1080 410, 1120 392, 1182 394
+             C1212 396, 1232 410, 1234 432
+             C1190 432, 1168 452, 1155 485
+             L1045 455Z"/>
+
+    <!-- center body -->
+    <path d="M1088 470
+             C1126 470, 1168 482, 1200 518
+             L1296 640
+             L1450 500
+             L1586 640
+             L1408 826
+             L1300 732
+             L1200 850
+             L1100 732
+             L992 826
+             L814 640
+             L950 500
+             L1104 640
+             L1190 530
+             C1162 492, 1128 474, 1088 470Z"/>
+
+    <!-- left wing segments -->
+    <path d="M760 530L930 678L880 730L690 580L760 530Z"/>
+    <path d="M700 610L860 740L820 790L640 660L700 610Z"/>
+    <path d="M650 700L800 812L760 862L600 752L650 700Z"/>
+
+    <!-- right wing segments -->
+    <path d="M1440 678L1610 530L1680 580L1490 730L1440 678Z"/>
+    <path d="M1510 740L1670 610L1730 660L1550 790L1510 740Z"/>
+    <path d="M1560 812L1710 700L1760 752L1600 862L1560 812Z"/>
+
+    <!-- lower tail -->
+    <path d="M1200 850L1320 1060L1200 1140L1080 1060L1200 850Z"/>
+  </g>
+</svg>
