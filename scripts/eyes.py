@@ -325,9 +325,13 @@ class EyesService:
         return self._is_admin_user(payload.get("user_id"))
 
     def _build_browser_descriptor(self, user_id: Optional[int], profile: Optional[Dict] = None) -> Optional[CameraDescriptor]:
-        if not user_id:
-            return None
-        profile = profile or self._browser_profile(user_id)
+        if profile is None:
+            profile = self._browser_profile(user_id) if user_id else {
+                "browser_camera_enabled": 0,
+                "browser_camera_permission_state": "prompt",
+                "browser_camera_device_id": "",
+                "browser_camera_label": "",
+            }
         if not (
             bool(profile.get("browser_camera_enabled"))
             and (profile.get("browser_camera_permission_state") or "prompt") == "granted"
@@ -340,7 +344,7 @@ class EyesService:
             source_ref=profile.get("browser_camera_device_id") or "browser",
             browser=True,
             available=profile.get("browser_camera_permission_state") != "denied",
-            owner_user_id=user_id,
+            owner_user_id=int(user_id) if user_id else None,
             permission_state=profile.get("browser_camera_permission_state") or "prompt",
             device_id=profile.get("browser_camera_device_id") or "",
         )
@@ -560,13 +564,14 @@ class EyesService:
             )
         return sources
 
-    def _build_visual_awareness(self, payload: Dict) -> Dict:
+    def _build_visual_awareness(self, payload: Dict, profile: Optional[Dict] = None) -> Dict:
         user_id = payload.get("user_id")
-        profile = self._browser_profile(user_id)
+        profile = profile or self._payload_browser_profile(payload, user_id)
         descriptors = self._build_camera_descriptors(
             user_id,
             admin=self._payload_is_admin(payload),
             include_server_cameras=False,
+            profile=profile,
         )
         available_sources = self._build_source_list(descriptors)
         allowed_camera_keys = {item["camera_key"] for item in available_sources}
@@ -806,8 +811,9 @@ class EyesService:
 
     def preview_frame_heartbeat(self, payload: Dict) -> Dict:
         action = "preview_frame_heartbeat"
+        profile = self._payload_browser_profile(payload, payload.get("user_id"))
         try:
-            camera = self._resolve_camera(payload)
+            camera = self._resolve_camera(payload, profile=profile)
         except CameraAccessError as exc:
             return self._forbidden_camera_response(action, exc)
         except Exception as exc:
@@ -873,7 +879,7 @@ class EyesService:
                 "person_present": person_present,
             },
         )
-        awareness = self._build_visual_awareness(payload)
+        awareness = self._build_visual_awareness(payload, profile=profile)
         freshness_details = awareness.get("freshness_diagnostics") or {}
         logging.info(
             "Preview heartbeat updated user_id=%s camera_key=%s freshness=%s reason=%s person_present=%s source_alignment=%s",
@@ -906,10 +912,10 @@ class EyesService:
             "message": str(error),
         }
 
-    def _resolve_camera(self, payload: Dict, for_ptz: bool = False) -> CameraDescriptor:
+    def _resolve_camera(self, payload: Dict, for_ptz: bool = False, profile: Optional[Dict] = None) -> CameraDescriptor:
         user_id = payload.get("user_id")
         requested = (payload.get("camera_id") or "").strip().lower()
-        profile = self._payload_browser_profile(payload, user_id)
+        profile = profile or self._payload_browser_profile(payload, user_id)
         candidates = self._build_camera_descriptors(user_id, admin=self._payload_is_admin(payload), profile=profile)
         browser_descriptor = next((item for item in candidates if item.camera_id == "browser"), None)
 
@@ -1233,7 +1239,7 @@ class EyesService:
 
     def _authorized_latest_scene_entities(self, payload: Dict) -> List[Dict]:
         user_id = payload.get("user_id")
-        profile = self._browser_profile(user_id)
+        profile = self._payload_browser_profile(payload, user_id)
         descriptors = self._build_camera_descriptors(
             user_id,
             admin=self._payload_is_admin(payload),
@@ -2533,7 +2539,7 @@ class EyesService:
         if resolved_mode != "troubleshoot":
             if needs_clarification:
                 clarification_prompt = (
-                    "I’m not getting a clear object inside the target box yet. Please center the object inside the box."
+                    "I’m not getting a clear object inside the selected region yet. Please center the object inside the selected region."
                     if target_region_used
                     else "Please adjust the target or tell me what object you want me to focus on."
                 )
@@ -2638,7 +2644,7 @@ class EyesService:
 
         if not clarification_prompt and needs_clarification:
             clarification_prompt = (
-                "I’m not getting a clear object inside the target box yet. Please center the object inside the box."
+                "I’m not getting a clear object inside the selected region yet. Please center the object inside the selected region."
                 if target_region_used
                 else "Please adjust the target or tell me what object you want me to focus on."
             )
@@ -2777,12 +2783,13 @@ class EyesService:
 
     def inspect_object(self, payload: Dict) -> Dict:
         try:
+            profile = self._payload_browser_profile(payload, payload.get("user_id"))
             target_mode = infer_target_mode(
                 target_mode=payload.get("target_mode"),
                 target_point=payload.get("target_point"),
                 target_region=payload.get("target_region") if isinstance(payload.get("target_region"), dict) else None,
             )
-            camera = self._resolve_camera(payload)
+            camera = self._resolve_camera(payload, profile=profile)
             self._persist_camera(camera)
             intent = self._intent_payload(self._normalize_intent(payload))
             frame = self._capture_frame(camera, payload)
@@ -3053,7 +3060,7 @@ class EyesService:
                 "summary": summary,
                 "status": self._status_payload(
                     camera,
-                    browser_profile=self._browser_profile(payload.get("user_id")),
+                    browser_profile=profile,
                     activity="capture_complete",
                     result_kind="inspection",
                     message="Vision capture complete.",
@@ -3069,7 +3076,8 @@ class EyesService:
 
     def inspect_faces(self, payload: Dict) -> Dict:
         try:
-            camera = self._resolve_camera(payload)
+            profile = self._payload_browser_profile(payload, payload.get("user_id"))
+            camera = self._resolve_camera(payload, profile=profile)
             self._persist_camera(camera)
             intent = self._intent_payload("who_do_you_see")
             frame = self._capture_frame(camera, payload)
@@ -3122,7 +3130,7 @@ class EyesService:
                 "summary": summary,
                 "status": self._status_payload(
                     camera,
-                    browser_profile=self._browser_profile(payload.get("user_id")),
+                    browser_profile=profile,
                     activity="capture_complete",
                     result_kind="faces",
                     message="Face inspection complete.",
@@ -3163,7 +3171,8 @@ class EyesService:
 
     def handle_ptz(self, payload: Dict) -> Dict:
         try:
-            camera = self._resolve_camera(payload, for_ptz=True)
+            profile = self._payload_browser_profile(payload, payload.get("user_id"))
+            camera = self._resolve_camera(payload, for_ptz=True, profile=profile)
             action = (payload.get("direction") or payload.get("ptz_action") or "").strip().lower()
             allowed, retry_after = self.ptz_limiter.check(f"{self._camera_key(camera)}:{action}")
             if not allowed:
