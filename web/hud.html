@@ -471,6 +471,45 @@ input[type="range"]::-webkit-slider-thumb{
   color:var(--muted);
   min-height:16px;
 }
+.infosucker-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:10px;
+  background:rgba(3,15,22,.10);
+  border:1px solid rgba(0,255,255,.08);
+  border-radius:10px;
+}
+.infosucker-top{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.infosucker-url{
+  flex:1 1 220px;
+  min-width:0;
+  border-radius:8px;
+  border:1px solid rgba(0,255,255,.12);
+  background:rgba(2,10,18,.28);
+  color:var(--text);
+  padding:10px 12px;
+}
+.infosucker-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.infosucker-status-title{
+  font-size:12px;
+  color:var(--cyan);
+  font-weight:700;
+}
+.infosucker-meta{
+  font-size:12px;
+  color:var(--muted);
+  line-height:1.45;
+  white-space:pre-line;
+}
 .quick-notes{
   font-size:11.5px;
   line-height:1.45;
@@ -751,11 +790,26 @@ input[type="range"]::-webkit-slider-thumb{
           <div class="upload-top">
             <label for="file-upload" class="file-btn">Select File</label>
             <input id="file-upload" class="hidden-input" type="file"
-              accept=".txt,.md,.rtf,.pdf,.doc,.docx,.odt,.csv,.tsv,.xls,.xlsx,.ods,.json,.ppt,.pptx,.odp,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.svg,.py,.js,.ts,.html,.css,.xml,.yaml,.yml,.dwg,.dxf,.zip,.sh,.bash,.ksh,.zsh,.ps1,.bat"/>
+              accept=".txt,.md,.rtf,.pdf,.doc,.docx,.odt,.csv,.tsv,.xls,.xlsx,.ods,.json,.ppt,.pptx,.odp,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.svg,.py,.js,.ts,.html,.css,.xml,.yaml,.yml,.dwg,.dxf,.zip,.zim,.sh,.bash,.ksh,.zsh,.ps1,.bat"/>
             <div id="file-name" class="file-name">No file selected</div>
           </div>
           <div class="progress"><div id="upload-progress-bar" class="progress-bar"></div></div>
           <div id="upload-status" class="upload-status"></div>
+        </div>
+
+        <div class="infosucker-wrap">
+          <div class="section-title">Info-Sucker</div>
+          <div class="infosucker-top">
+            <input id="infosucker-source-url" class="infosucker-url" type="url" placeholder="https://download.kiwix.org/zim/wikipedia/"/>
+            <div class="infosucker-actions">
+              <button id="infosucker-start-btn" class="header-btn" type="button">Start Import</button>
+              <button id="infosucker-resume-btn" class="header-btn" type="button">Resume</button>
+            </div>
+          </div>
+          <div class="progress"><div id="infosucker-progress-bar" class="progress-bar"></div></div>
+          <div id="infosucker-status-title" class="infosucker-status-title">Latest Info-Sucker job unavailable</div>
+          <div id="infosucker-status" class="upload-status">Progress details are loading...</div>
+          <div id="infosucker-progress-details" class="infosucker-meta"></div>
         </div>
 
         <div class="quick-notes">
@@ -866,6 +920,8 @@ const APP_BASE = "";
 const API_ME_ENDPOINT = `${APP_BASE}/api/me`;
 const AUTH_SETTINGS_ENDPOINT = `${APP_BASE}/auth/settings`;
 const FILE_UPLOAD_ENDPOINT = `${APP_BASE}/api/upload`;
+const INFOSUCKER_JOBS_ENDPOINT = `${APP_BASE}/api/infosucker/jobs`;
+const INFOSUCKER_LATEST_JOB_ENDPOINT = `${INFOSUCKER_JOBS_ENDPOINT}/latest`;
 const LOGOUT_ENDPOINT = `${APP_BASE}/auth/logout`;
 const VISION_PREVIEW_ENDPOINT = `${APP_BASE}/api/vision/preview`;
 const VISION_INSPECT_ENDPOINT = `${APP_BASE}/api/vision/inspect`;
@@ -922,6 +978,9 @@ let currentPreferredLanguage = 'auto';
 let scheduledAudioChunkPlaybackTime = 0;
 let currentActiveBufferSources = [];
 let lastOpenedDocumentPath = '';
+let infosuckerPollTimer = null;
+let currentInfosuckerJobId = '';
+let infosuckerPollInFlight = false;
 const AUDIO_GATE_THRESHOLD = 0.012;
 const AUDIO_GATE_HOLD_TIME = 400;
 let lastVoiceDetectionTimestamp = 0;
@@ -974,6 +1033,33 @@ function addMessage(text, who='jarvis'){
   box.appendChild(msg);
   box.scrollTop = box.scrollHeight;
   return msg;
+}
+async function fetchJsonWithSession(endpoint, options = {}){
+  const response = await fetch(endpoint, {
+    credentials:'include',
+    ...options
+  });
+  const payload = await response.json().catch(() => ({}));
+  if(!response.ok){
+    const error = new Error(payload.message || `Request failed (${response.status})`);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+function formatBytes(bytes){
+  const value = Number(bytes || 0);
+  if(!value) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let index = 0;
+  while(size >= 1024 && index < units.length - 1){
+    size /= 1024;
+    index += 1;
+  }
+  const precision = size >= 10 || index === 0 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[index]}`;
 }
 function splitNameParts(name){
   const cleaned = (name || '').trim();
@@ -1892,6 +1978,167 @@ if(navigator.mediaDevices?.addEventListener){
   });
 }
 
+const infosuckerSourceUrl = document.getElementById('infosucker-source-url');
+const infosuckerStartBtn = document.getElementById('infosucker-start-btn');
+const infosuckerResumeBtn = document.getElementById('infosucker-resume-btn');
+const infosuckerProgressBar = document.getElementById('infosucker-progress-bar');
+const infosuckerStatusTitle = document.getElementById('infosucker-status-title');
+const infosuckerStatus = document.getElementById('infosucker-status');
+const infosuckerProgressDetails = document.getElementById('infosucker-progress-details');
+
+function renderInfosuckerJob(job, message){
+  if(!job){
+    currentInfosuckerJobId = '';
+    if(infosuckerProgressBar) infosuckerProgressBar.style.width = '0%';
+    if(infosuckerStatusTitle) infosuckerStatusTitle.textContent = 'Latest Info-Sucker job unavailable';
+    if(infosuckerStatus) infosuckerStatus.textContent = message || 'No Info-Sucker job has been started yet.';
+    if(infosuckerProgressDetails) infosuckerProgressDetails.textContent = '';
+    if(infosuckerResumeBtn) infosuckerResumeBtn.disabled = true;
+    return;
+  }
+  currentInfosuckerJobId = job.job_id || '';
+  const batchCount = Number(job.batch_count || 0);
+  const currentBatch = Number(job.current_batch_number || 0);
+  const summary = job.summary || {};
+  const completed = Number(summary.validated || 0) + Number(summary.failed || 0) + Number(summary.skipped || 0);
+  const total = Math.max(Number(summary.discovered || 0), completed, 1);
+  const percent = Math.max(0, Math.min(100, Math.round((completed / total) * 100)));
+  if(infosuckerProgressBar) infosuckerProgressBar.style.width = `${percent}%`;
+  if(infosuckerStatusTitle){
+    infosuckerStatusTitle.textContent = `Latest Info-Sucker job · ${job.phase || 'unknown'} · ${job.status || 'unknown'}`;
+  }
+  if(infosuckerStatus){
+    infosuckerStatus.textContent = message || `Source: ${job.source_url || 'unknown'} `;
+  }
+  const validation = job.validation && job.current_batch_number ? job.validation[String(job.current_batch_number)] : null;
+  const details = [
+    `Discovered: ${summary.discovered || 0}`,
+    `Estimated bytes: ${formatBytes(job.total_estimated_bytes || 0)}`,
+    `Batches: ${batchCount || 0}`,
+    `Current batch: ${currentBatch || 0}/${batchCount || 0}`,
+    `Downloaded: ${summary.downloaded || 0}`,
+    `Imported: ${summary.imported || 0}`,
+    `Validated: ${summary.validated || 0}`,
+    `Skipped: ${summary.skipped || 0}`,
+    `Failed: ${summary.failed || 0}`,
+    `Extracted records: ${summary.extracted_records || 0}`,
+    `Indexed documents: ${summary.indexed_documents || 0}`,
+    `Chunks: ${summary.chunk_count || 0}`
+  ];
+  if(validation){
+    details.push(`Batch validation failure rate: ${Math.round((validation.failure_rate || 0) * 100)}%`);
+  }
+  const failedFiles = (job.per_file_status || [])
+    .filter(item => item.failure_reason)
+    .slice(0, 5)
+    .map(item => `${item.file_name}: ${item.failure_reason}`);
+  if(failedFiles.length){
+    details.push(`Failures: ${failedFiles.join(' | ')}`);
+  }
+  if(infosuckerProgressDetails) infosuckerProgressDetails.textContent = details.join('\n');
+  if(infosuckerResumeBtn){
+    infosuckerResumeBtn.disabled = !(job.status === 'paused' || job.status === 'failed');
+  }
+}
+
+function startInfosuckerPolling(jobId){
+  if(infosuckerPollTimer) clearTimeout(infosuckerPollTimer);
+  if(!jobId) return;
+  currentInfosuckerJobId = jobId;
+  const poll = async () => {
+    if(infosuckerPollInFlight) return;
+    infosuckerPollInFlight = true;
+    try{
+      const payload = await fetchJsonWithSession(`${INFOSUCKER_JOBS_ENDPOINT}/${encodeURIComponent(jobId)}`);
+      if(jobId !== currentInfosuckerJobId){
+        infosuckerPollInFlight = false;
+        return;
+      }
+      renderInfosuckerJob(payload.job);
+      if(payload.job && !['queued','running','paused'].includes(payload.job.status)){
+        infosuckerPollTimer = null;
+        infosuckerPollInFlight = false;
+        return;
+      }
+    }catch(err){
+      const message = err.status === 401
+        ? 'Info-Sucker status unavailable: Please sign in again.'
+        : `Info-Sucker status unavailable: ${err.message}`;
+      if(infosuckerStatus) infosuckerStatus.textContent = message;
+      if(infosuckerProgressDetails) infosuckerProgressDetails.textContent = '';
+      if(infosuckerProgressBar) infosuckerProgressBar.style.width = '0%';
+      if(err.status === 401){
+        currentInfosuckerJobId = '';
+        if(infosuckerPollTimer) clearTimeout(infosuckerPollTimer);
+        infosuckerPollTimer = null;
+        infosuckerPollInFlight = false;
+        return;
+      }
+    }
+    infosuckerPollInFlight = false;
+    infosuckerPollTimer = setTimeout(poll, 2000);
+  };
+  poll();
+}
+
+async function loadLatestInfosuckerJob(){
+  try{
+    const payload = await fetchJsonWithSession(INFOSUCKER_LATEST_JOB_ENDPOINT);
+    renderInfosuckerJob(payload.job);
+    if(payload.job && ['queued','running'].includes(payload.job.status)){
+      startInfosuckerPolling(payload.job.job_id);
+    }
+  }catch(err){
+    const message = err.status === 401
+      ? 'Info-Sucker status unavailable: Please sign in again.'
+      : `Info-Sucker status unavailable: ${err.message}`;
+    renderInfosuckerJob(null, message);
+  }
+}
+
+async function startInfosuckerJob(){
+  const sourceUrl = (infosuckerSourceUrl?.value || '').trim();
+  if(!sourceUrl){
+    renderInfosuckerJob(null, 'Enter a source URL to start Info-Sucker.');
+    return;
+  }
+  if(infosuckerStatus) infosuckerStatus.textContent = 'Creating Info-Sucker job...';
+  setConsoleStatus('Starting Info-Sucker...');
+  try{
+    const payload = await fetchJsonWithSession(INFOSUCKER_JOBS_ENDPOINT, {
+      method:'POST',
+      headers:{ 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_url: sourceUrl })
+    });
+    renderInfosuckerJob(payload.job, 'Discovery queued.');
+    addMessage(`Info-Sucker started for ${sourceUrl}.`, 'jarvis');
+    startInfosuckerPolling(payload.job && payload.job.job_id);
+  }catch(err){
+    const message = err.status === 401
+      ? 'Info-Sucker could not start because your session expired.'
+      : `Info-Sucker failed to start: ${err.message}`;
+    if(infosuckerStatus) infosuckerStatus.textContent = message;
+    addMessage(message, 'jarvis');
+  }
+}
+
+async function resumeInfosuckerJob(){
+  if(!currentInfosuckerJobId) return;
+  if(infosuckerStatus) infosuckerStatus.textContent = 'Resuming Info-Sucker job...';
+  try{
+    const payload = await fetchJsonWithSession(`${INFOSUCKER_JOBS_ENDPOINT}/${encodeURIComponent(currentInfosuckerJobId)}/resume`, {
+      method:'POST'
+    });
+    renderInfosuckerJob(payload.job, 'Resume requested.');
+    startInfosuckerPolling(currentInfosuckerJobId);
+  }catch(err){
+    const message = err.status === 401
+      ? 'Info-Sucker resume failed because your session expired.'
+      : `Info-Sucker resume failed: ${err.message}`;
+    if(infosuckerStatus) infosuckerStatus.textContent = message;
+  }
+}
+
 const fileUpload = document.getElementById('file-upload');
 const fileName = document.getElementById('file-name');
 const progressBar = document.getElementById('upload-progress-bar');
@@ -1953,6 +2200,9 @@ fileUpload.addEventListener('change', async ()=>{
     console.error(err);
   }
 });
+
+infosuckerStartBtn?.addEventListener('click', startInfosuckerJob);
+infosuckerResumeBtn?.addEventListener('click', resumeInfosuckerJob);
 
 const manualInput = document.getElementById('manual-input');
 const submitManual = document.getElementById('submit-manual');
@@ -2052,6 +2302,7 @@ if(window.JarvisSettings){
 
 (async function init(){
   await fetchCurrentUser();
+  await loadLatestInfosuckerJob();
   connectWS();
 })();
 

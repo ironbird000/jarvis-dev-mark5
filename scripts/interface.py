@@ -30,6 +30,8 @@ from config import (
     ADMIN_EMAILS,
 )
 from auth import AuthManager
+from document_ingest import iter_ingest_records
+from infosucker import BatchLimits, InfoSuckerJobManager, validate_safe_url
 from memory import MemoryStore
 from location_service import validate_home_location
 
@@ -49,10 +51,15 @@ sock = Sock(app)
 
 store = MemoryStore()
 auth = AuthManager(store=store)
+infosucker_manager = None
 
 CONNECTED_CLIENTS = {}
+INFOSUCKER_JOBS_DIR = DATA_DIR / "infosucker_jobs"
+INFOSUCKER_DOWNLOADS_DIR = DATA_DIR / "infosucker_downloads"
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+INFOSUCKER_JOBS_DIR.mkdir(parents=True, exist_ok=True)
+INFOSUCKER_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_UPLOAD_EXTENSIONS = {
     ".txt", ".md", ".rtf", ".pdf", ".doc", ".docx", ".odt",
@@ -60,7 +67,7 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     ".ppt", ".pptx", ".odp",
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".svg",
     ".py", ".js", ".ts", ".html", ".css", ".xml", ".yaml", ".yml",
-    ".dwg", ".dxf", ".zip", ".sh", ".bash", ".ksh", ".zsh", ".ps1", ".bat"
+    ".dwg", ".dxf", ".zip", ".zim", ".sh", ".bash", ".ksh", ".zsh", ".ps1", ".bat"
 }
 MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 SUPPORTED_LANGUAGES = {
@@ -484,6 +491,123 @@ def _index_upload_into_memory(user: dict, file_path: Path, original_name: str, m
         "scope": scope,
         "chunk_count": len(chunks),
     }
+
+
+def _delete_existing_document_record(owner_user_id: int, scope: str, record_path: str):
+    if not record_path:
+        return
+    with store.connect() as conn:
+        rows = conn.execute(
+            "SELECT id FROM document_index WHERE stored_path = ? AND owner_user_id = ? AND scope = ?",
+            (record_path, owner_user_id, scope)
+        ).fetchall()
+        document_ids = [row["id"] for row in rows]
+        if document_ids:
+            placeholders = ",".join("?" for _ in document_ids)
+            conn.execute(
+                f"DELETE FROM document_chunks WHERE document_id IN ({placeholders})",
+                document_ids,
+            )
+            conn.execute(
+                f"DELETE FROM document_index WHERE id IN ({placeholders})",
+                document_ids,
+            )
+        conn.commit()
+
+
+def _infosucker_import_file(user: dict, file_state: dict, scope: str) -> dict:
+    stored_path = Path(file_state.get("stored_path") or "")
+    mime_type = file_state.get("mime_type") or mimetypes.guess_type(str(stored_path))[0] or "application/octet-stream"
+    limits = infosucker_manager.limits if infosucker_manager else BatchLimits.from_env()
+
+    extracted_record_count = 0
+    indexed_document_count = 0
+    chunk_total = 0
+    document_ids = []
+    preview = ""
+
+    try:
+        records = iter_ingest_records(
+            str(stored_path),
+            mime_type=mime_type,
+            max_records=limits.zim_max_records,
+            stop_after=limits.zim_stop_after_records,
+            progress_every=limits.progress_every_records,
+        )
+        for record in records:
+            extracted_record_count += 1
+            text = (record.get("text") or "").strip()
+            if not text:
+                continue
+            record_stored_path = record.get("stored_path") or str(stored_path)
+            _delete_existing_document_record(user.get("user_id"), scope, record_stored_path)
+            document_id = store.create_document_index(
+                owner_user_id=user.get("user_id"),
+                file_name=record.get("file_name") or stored_path.name,
+                stored_path=record_stored_path,
+                mime_type=record.get("mime_type") or mime_type,
+                scope=scope,
+                extracted_text=text,
+                ocr_status="complete",
+                is_searchable=1,
+            )
+            chunks = _chunk_text(text)
+            store.replace_document_chunks(
+                document_id=document_id,
+                owner_user_id=user.get("user_id"),
+                scope=scope,
+                chunks=chunks,
+            )
+            indexed_document_count += 1
+            chunk_total += len(chunks)
+            document_ids.append(document_id)
+            if not preview:
+                preview = text[:500]
+    except Exception as exc:
+        logging.exception("Info-Sucker import failed for %s", stored_path)
+        return {
+            "import_attempted": True,
+            "extracted_record_count": extracted_record_count,
+            "indexed_document_count": indexed_document_count,
+            "chunk_count": chunk_total,
+            "embedding_success": None,
+            "failure_reason": str(exc),
+            "document_ids": document_ids,
+            "preview": preview,
+        }
+
+    failure_reason = None
+    if extracted_record_count <= 0:
+        failure_reason = "Import yielded zero extracted records."
+    elif indexed_document_count <= 0:
+        failure_reason = "No documents were indexed."
+    else:
+        try:
+            store.store_upload(
+                user_id=user.get("user_id"),
+                file_name=file_state.get("file_name") or stored_path.name,
+                stored_path=str(stored_path),
+                mime_type=mime_type,
+            )
+        except Exception:
+            logging.exception("Info-Sucker upload registration failed for %s", stored_path)
+
+    return {
+        "import_attempted": True,
+        "extracted_record_count": extracted_record_count,
+        "indexed_document_count": indexed_document_count,
+        "chunk_count": chunk_total,
+        "embedding_success": indexed_document_count > 0,
+        "failure_reason": failure_reason,
+        "document_ids": document_ids,
+        "preview": preview,
+    }
+
+
+infosucker_manager = InfoSuckerJobManager(
+    base_dir=INFOSUCKER_JOBS_DIR,
+    importer=_infosucker_import_file,
+)
 
 
 def socket_request(socket_path: Path, payload: dict, recv_size: int = 1024 * 1024) -> dict:
@@ -1044,6 +1168,79 @@ def route_upload():
         "registered": indexing.get("registered", False),
         "preview": indexing.get("text_preview", ""),
     })
+
+
+@app.route("/api/infosucker/jobs", methods=["POST"])
+@app.route("/dev-mark3/api/infosucker/jobs", methods=["POST"])
+def route_infosucker_start():
+    user = _current_user()
+    if not user:
+        return _json_error("Not authenticated.", 401)
+    csrf_error = _same_origin_post_required()
+    if csrf_error:
+        return csrf_error
+
+    payload = request.get_json(force=True, silent=True) or {}
+    source_url = (payload.get("source_url") or "").strip()
+    if not source_url:
+        return _json_error("A source URL is required.", 400)
+    try:
+        safe_source_url = validate_safe_url(source_url)
+    except ValueError as exc:
+        error_text = str(exc)
+        if error_text == "Only http(s) URLs are allowed.":
+            return _json_error("Only http(s) URLs are allowed.", 400)
+        if error_text == "URL host is required.":
+            return _json_error("URL host is required.", 400)
+        if error_text == "Private or local network URLs are not allowed.":
+            return _json_error("Private or local network URLs are not allowed.", 400)
+        return _json_error("Source URL failed validation.", 400)
+    except Exception:
+        logging.exception("Info-Sucker source URL validation failed unexpectedly")
+        return _json_error("Source URL failed validation.", 400)
+
+    scope = _normalize_upload_scope(payload.get("scope") or "personal", user)
+    job = infosucker_manager.start_job(user, safe_source_url, scope, INFOSUCKER_DOWNLOADS_DIR)
+    return jsonify({"success": True, "job": job}), 202
+
+
+@app.route("/api/infosucker/jobs/latest", methods=["GET"])
+@app.route("/dev-mark3/api/infosucker/jobs/latest", methods=["GET"])
+def route_infosucker_latest():
+    user = _current_user()
+    if not user:
+        return _json_error("Not authenticated.", 401)
+    job = infosucker_manager.get_latest_job(user)
+    return jsonify({"success": True, "job": job})
+
+
+@app.route("/api/infosucker/jobs/<job_id>", methods=["GET"])
+@app.route("/dev-mark3/api/infosucker/jobs/<job_id>", methods=["GET"])
+def route_infosucker_job(job_id: str):
+    user = _current_user()
+    if not user:
+        return _json_error("Not authenticated.", 401)
+    job = infosucker_manager.get_job(user, job_id)
+    if not job:
+        return _json_error("Info-Sucker job not found.", 404)
+    return jsonify({"success": True, "job": job})
+
+
+@app.route("/api/infosucker/jobs/<job_id>/resume", methods=["POST"])
+@app.route("/dev-mark3/api/infosucker/jobs/<job_id>/resume", methods=["POST"])
+def route_infosucker_resume(job_id: str):
+    user = _current_user()
+    if not user:
+        return _json_error("Not authenticated.", 401)
+    csrf_error = _same_origin_post_required()
+    if csrf_error:
+        return csrf_error
+    job = infosucker_manager.resume_job(user, job_id, INFOSUCKER_DOWNLOADS_DIR)
+    if not job:
+        return _json_error("Info-Sucker job not found.", 404)
+    if job.get("resume_rejected"):
+        return jsonify({"success": False, "job": job, "message": "Another Info-Sucker job is already active."}), 409
+    return jsonify({"success": True, "job": job})
 
 
 @app.route("/api/uploads", methods=["GET"])
