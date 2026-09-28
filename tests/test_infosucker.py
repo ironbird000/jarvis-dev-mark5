@@ -172,6 +172,7 @@ class InfoSuckerTests(unittest.TestCase):
             self.assertEqual(called, [('download', 'first.txt'), ('import', 'first.txt')])
             self.assertEqual(job['current_batch_number'], 1)
             self.assertEqual(job['batch_count'], 2)
+            self.assertEqual(job['completed_batches'], [1])
             self.assertEqual(job['per_file_status'][0]['failure_reason'], 'Import yielded zero extracted records.')
 
     def test_resume_continues_from_next_incomplete_batch(self):
@@ -234,9 +235,9 @@ class InfoSuckerTests(unittest.TestCase):
             manager._run_job(state['job_id'], {'user_id': 9}, 'personal', tmp_path / 'downloads', True)
             job = manager.get_job({'user_id': 9}, state['job_id'])
             self.assertEqual(job['status'], 'completed')
-            self.assertEqual(importer_calls, ['first.txt', 'second.txt', 'second.txt'])
+            self.assertEqual(importer_calls, ['first.txt', 'second.txt'])
             self.assertEqual(job['completed_batches'], [1, 2])
-            self.assertEqual(job['summary']['validated'], 2)
+            self.assertEqual(job['summary']['validated'], 1)
 
     def test_small_zim_import_through_batch_flow_and_zero_record_detection(self):
         limits = infosucker.BatchLimits(

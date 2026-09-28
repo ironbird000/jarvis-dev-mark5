@@ -2055,7 +2055,7 @@ function startInfosuckerPolling(jobId){
         return;
       }
       renderInfosuckerJob(payload.job);
-      if(payload.job && !['queued','running'].includes(payload.job.status)){
+      if(payload.job && !['queued','running','paused'].includes(payload.job.status)){
         infosuckerPollTimer = null;
         infosuckerPollInFlight = false;
         return;

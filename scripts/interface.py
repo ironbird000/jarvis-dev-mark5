@@ -1187,7 +1187,14 @@ def route_infosucker_start():
     try:
         safe_source_url = validate_safe_url(source_url)
     except ValueError as exc:
-        return _json_error(str(exc), 400)
+        error_text = str(exc)
+        if error_text == "Only http(s) URLs are allowed.":
+            return _json_error("Only http(s) URLs are allowed.", 400)
+        if error_text == "URL host is required.":
+            return _json_error("URL host is required.", 400)
+        if error_text == "Private or local network URLs are not allowed.":
+            return _json_error("Private or local network URLs are not allowed.", 400)
+        return _json_error("Source URL failed validation.", 400)
     except Exception:
         logging.exception("Info-Sucker source URL validation failed unexpectedly")
         return _json_error("Source URL failed validation.", 400)

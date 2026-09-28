@@ -669,7 +669,9 @@ class InfoSuckerJobManager:
                     'results': validation_results,
                 }
                 if failure_rate > self.limits.validation_failure_threshold:
-                    batch['status'] = 'paused'
+                    batch['status'] = 'completed'
+                    if batch_number not in state['completed_batches']:
+                        state['completed_batches'].append(batch_number)
                     state['phase'] = 'paused'
                     state['status'] = 'paused'
                     state['failure_details'].append({
@@ -680,7 +682,8 @@ class InfoSuckerJobManager:
                     self._save_state(state)
                     return
                 batch['status'] = 'completed'
-                state['completed_batches'].append(batch_number)
+                if batch_number not in state['completed_batches']:
+                    state['completed_batches'].append(batch_number)
                 self._save_state(state)
             state['phase'] = 'completed'
             state['status'] = 'completed'
