@@ -2044,11 +2044,16 @@ function renderInfosuckerJob(job, message){
 function startInfosuckerPolling(jobId){
   if(infosuckerPollTimer) clearTimeout(infosuckerPollTimer);
   if(!jobId) return;
+  currentInfosuckerJobId = jobId;
   const poll = async () => {
     if(infosuckerPollInFlight) return;
     infosuckerPollInFlight = true;
     try{
       const payload = await fetchJsonWithSession(`${INFOSUCKER_JOBS_ENDPOINT}/${encodeURIComponent(jobId)}`);
+      if(jobId !== currentInfosuckerJobId){
+        infosuckerPollInFlight = false;
+        return;
+      }
       renderInfosuckerJob(payload.job);
       if(payload.job && !['queued','running'].includes(payload.job.status)){
         infosuckerPollTimer = null;
@@ -2062,7 +2067,9 @@ function startInfosuckerPolling(jobId){
       if(infosuckerStatus) infosuckerStatus.textContent = message;
       if(infosuckerProgressDetails) infosuckerProgressDetails.textContent = '';
       if(infosuckerProgressBar) infosuckerProgressBar.style.width = '0%';
-      if(err.status === 401 && infosuckerPollTimer){
+      if(err.status === 401){
+        currentInfosuckerJobId = '';
+        if(infosuckerPollTimer) clearTimeout(infosuckerPollTimer);
         infosuckerPollTimer = null;
         infosuckerPollInFlight = false;
         return;

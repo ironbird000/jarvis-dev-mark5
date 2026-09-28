@@ -358,7 +358,7 @@ class InfoSuckerJobManager:
         self.importer = importer or self._noop_importer
         self.limits = limits or BatchLimits.from_env()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='infosucker')
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._futures: Dict[str, object] = {}
 
     def _noop_importer(self, user: Dict[str, object], item: Dict[str, object], scope: str) -> Dict[str, object]:
@@ -392,9 +392,18 @@ class InfoSuckerJobManager:
         return json.loads(path.read_text(encoding='utf-8'))
 
     def _save_state(self, state: Dict[str, object]):
+        self._refresh_failed_summary(state)
         state['updated_at'] = utcnow_iso()
         path = self._job_path(state['user_id'], state['job_id'])
         path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding='utf-8')
+
+    def _refresh_failed_summary(self, state: Dict[str, object]):
+        per_file_status = state.get('per_file_status') or {}
+        state['summary']['failed'] = sum(
+            1
+            for file_state in per_file_status.values()
+            if file_state.get('failure_reason') and not file_state.get('validated')
+        )
 
     def _future_is_active(self, job_id: str) -> bool:
         with self._lock:
@@ -407,14 +416,25 @@ class InfoSuckerJobManager:
 
     def _get_active_job_for_user(self, user_id: int) -> Optional[Dict[str, object]]:
         job_dir = self._job_dir(user_id)
-        for path in sorted(job_dir.glob('*.json')):
+        active_states = []
+        for path in job_dir.glob('*.json'):
             try:
                 state = json.loads(path.read_text(encoding='utf-8'))
             except Exception:
                 continue
             if state.get('status') in {'queued', 'running'}:
-                return state
-        return None
+                active_states.append(state)
+        if not active_states:
+            return None
+        return sorted(
+            active_states,
+            key=lambda item: (
+                item.get('created_at') or '',
+                item.get('started_at') or '',
+                item.get('updated_at') or '',
+            ),
+            reverse=True,
+        )[0]
 
     def _initial_state(self, user: Dict[str, object], source_url: str, scope: str) -> Dict[str, object]:
         now = utcnow_iso()
@@ -451,30 +471,37 @@ class InfoSuckerJobManager:
         }
 
     def start_job(self, user: Dict[str, object], source_url: str, scope: str, download_root: Path) -> Dict[str, object]:
-        active = self._get_active_job_for_user(int(user['user_id']))
-        if active:
-            return serialize_job_state(active)
-        state = self._initial_state(user, source_url, scope)
-        self._save_state(state)
-        future = self._executor.submit(self._run_job, state['job_id'], user, scope, Path(download_root), False)
         with self._lock:
+            active = self._get_active_job_for_user(int(user['user_id']))
+            if active:
+                return serialize_job_state(active)
+            state = self._initial_state(user, source_url, scope)
+            self._save_state(state)
+            future = self._executor.submit(self._run_job, state['job_id'], user, scope, Path(download_root), False)
             self._futures[state['job_id']] = future
         return serialize_job_state(state)
 
     def resume_job(self, user: Dict[str, object], job_id: str, download_root: Path) -> Optional[Dict[str, object]]:
-        state = self._load_state(int(user['user_id']), job_id)
-        if not state:
-            return None
-        if state.get('status') in {'queued', 'running'} or self._future_is_active(job_id):
-            return serialize_job_state(state)
-        if state.get('status') not in {'paused', 'failed'}:
-            return serialize_job_state(state)
-        state['status'] = 'queued'
-        state['phase'] = 'planning' if state.get('batch_plan') else 'discovering'
-        state['completed_at'] = None
-        self._save_state(state)
-        future = self._executor.submit(self._run_job, job_id, user, state.get('scope') or 'personal', Path(download_root), True)
         with self._lock:
+            state = self._load_state(int(user['user_id']), job_id)
+            if not state:
+                return None
+            active = self._get_active_job_for_user(int(user['user_id']))
+            if active and active.get('job_id') != state.get('job_id'):
+                blocked = serialize_job_state(state)
+                blocked['resume_rejected'] = True
+                return blocked
+            if state.get('status') in {'queued', 'running'} or self._future_is_active(job_id):
+                blocked = serialize_job_state(state)
+                blocked['resume_rejected'] = True
+                return blocked
+            if state.get('status') not in {'paused', 'failed'}:
+                return serialize_job_state(state)
+            state['status'] = 'queued'
+            state['phase'] = 'planning' if state.get('batch_plan') else 'discovering'
+            state['completed_at'] = None
+            self._save_state(state)
+            future = self._executor.submit(self._run_job, job_id, user, state.get('scope') or 'personal', Path(download_root), True)
             self._futures[job_id] = future
         return serialize_job_state(state)
 
@@ -564,16 +591,17 @@ class InfoSuckerJobManager:
                         existing_path = Path(file_state.get('stored_path') or "")
                         if file_state.get('downloaded') and existing_path.exists():
                             file_state['status'] = 'downloaded'
+                            file_state['failure_reason'] = None
                         else:
                             download_result = self.downloader(item, download_batch_dir)
                             file_state.update(download_result)
                             file_state['downloaded'] = True
                             file_state['status'] = 'downloaded'
+                            file_state['failure_reason'] = None
                             state['summary']['downloaded'] += 1
                     except Exception as exc:
                         file_state['status'] = 'failed'
                         file_state['failure_reason'] = str(exc)
-                        state['summary']['failed'] += 1
                     batch_file_statuses.append(file_state)
                     self._save_state(state)
                 state['phase'] = 'importing'
@@ -582,10 +610,21 @@ class InfoSuckerJobManager:
                     if file_state.get('validated') or not file_state.get('downloaded'):
                         continue
                     try:
+                        previous_extracted = int(file_state.get('extracted_record_count') or 0)
+                        previous_indexed = int(file_state.get('indexed_document_count') or 0)
+                        previous_chunks = int(file_state.get('chunk_count') or 0)
+                        if file_state.get('import_attempted'):
+                            state['summary']['extracted_records'] = max(0, state['summary']['extracted_records'] - previous_extracted)
+                            state['summary']['indexed_documents'] = max(0, state['summary']['indexed_documents'] - previous_indexed)
+                            state['summary']['chunk_count'] = max(0, state['summary']['chunk_count'] - previous_chunks)
+                            if previous_indexed > 0:
+                                state['summary']['imported'] = max(0, state['summary']['imported'] - 1)
                         import_result = self.importer(user, file_state, scope)
                         file_state.update(import_result)
                         file_state['import_attempted'] = bool(import_result.get('import_attempted', True))
                         file_state['status'] = 'imported' if import_result.get('indexed_document_count', 0) > 0 else 'imported_empty'
+                        if import_result.get('indexed_document_count', 0) > 0:
+                            file_state['failure_reason'] = None
                         state['summary']['extracted_records'] += int(import_result.get('extracted_record_count') or 0)
                         state['summary']['indexed_documents'] += int(import_result.get('indexed_document_count') or 0)
                         state['summary']['chunk_count'] += int(import_result.get('chunk_count') or 0)
@@ -594,7 +633,6 @@ class InfoSuckerJobManager:
                     except Exception as exc:
                         file_state['status'] = 'failed'
                         file_state['failure_reason'] = str(exc)
-                        state['summary']['failed'] += 1
                     self._save_state(state)
                 state['phase'] = 'validating'
                 failures = 0

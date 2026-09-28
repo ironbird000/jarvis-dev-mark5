@@ -493,13 +493,13 @@ def _index_upload_into_memory(user: dict, file_path: Path, original_name: str, m
     }
 
 
-def _delete_existing_document_record(record_path: str):
+def _delete_existing_document_record(owner_user_id: int, scope: str, record_path: str):
     if not record_path:
         return
     with store.connect() as conn:
         rows = conn.execute(
-            "SELECT id FROM document_index WHERE stored_path = ?",
-            (record_path,)
+            "SELECT id FROM document_index WHERE stored_path = ? AND owner_user_id = ? AND scope = ?",
+            (record_path, owner_user_id, scope)
         ).fetchall()
         document_ids = [row["id"] for row in rows]
         if document_ids:
@@ -540,7 +540,7 @@ def _infosucker_import_file(user: dict, file_state: dict, scope: str) -> dict:
             if not text:
                 continue
             record_stored_path = record.get("stored_path") or str(stored_path)
-            _delete_existing_document_record(record_stored_path)
+            _delete_existing_document_record(user.get("user_id"), scope, record_stored_path)
             document_id = store.create_document_index(
                 owner_user_id=user.get("user_id"),
                 file_name=record.get("file_name") or stored_path.name,
@@ -1186,8 +1186,10 @@ def route_infosucker_start():
         return _json_error("A source URL is required.", 400)
     try:
         safe_source_url = validate_safe_url(source_url)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
     except Exception:
-        logging.exception("Info-Sucker source URL validation failed")
+        logging.exception("Info-Sucker source URL validation failed unexpectedly")
         return _json_error("Source URL failed validation.", 400)
 
     scope = _normalize_upload_scope(payload.get("scope") or "personal", user)
@@ -1229,6 +1231,8 @@ def route_infosucker_resume(job_id: str):
     job = infosucker_manager.resume_job(user, job_id, INFOSUCKER_DOWNLOADS_DIR)
     if not job:
         return _json_error("Info-Sucker job not found.", 404)
+    if job.get("resume_rejected"):
+        return jsonify({"success": False, "job": job, "message": "Another Info-Sucker job is already active."}), 409
     return jsonify({"success": True, "job": job})
 
 

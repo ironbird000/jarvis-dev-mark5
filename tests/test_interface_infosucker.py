@@ -1,4 +1,5 @@
 import importlib.util
+import sqlite3
 import sys
 import types
 import unittest
@@ -63,10 +64,53 @@ def load_interface_module(temp_root: Path):
 
     class StubMemoryStore:
         def __init__(self, *args, **kwargs):
-            pass
+            self.conn = sqlite3.connect(':memory:')
+            self.conn.row_factory = sqlite3.Row
+            self.conn.execute(
+                'CREATE TABLE document_index ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'owner_user_id INTEGER, file_name TEXT, stored_path TEXT, mime_type TEXT, '
+                'scope TEXT, extracted_text TEXT, ocr_status TEXT, is_searchable INTEGER, '
+                'created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)'
+            )
+            self.conn.execute(
+                'CREATE TABLE document_chunks ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT, document_id INTEGER, owner_user_id INTEGER, '
+                'scope TEXT, chunk_index INTEGER, chunk_text TEXT)'
+            )
+            self.conn.execute(
+                'CREATE TABLE uploads ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, file_name TEXT, stored_path TEXT, mime_type TEXT)'
+            )
+            self.conn.commit()
 
         def connect(self):
-            raise AssertionError('connect should not be used in route payload tests')
+            return self.conn
+
+        def create_document_index(self, owner_user_id, file_name, stored_path, mime_type, scope='personal', extracted_text='', ocr_status='complete', is_searchable=1):
+            cur = self.conn.execute(
+                'INSERT INTO document_index (owner_user_id, file_name, stored_path, mime_type, scope, extracted_text, ocr_status, is_searchable) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (owner_user_id, file_name, stored_path, mime_type, scope, extracted_text, ocr_status, is_searchable)
+            )
+            self.conn.commit()
+            return cur.lastrowid
+
+        def replace_document_chunks(self, document_id, owner_user_id, scope, chunks):
+            self.conn.execute('DELETE FROM document_chunks WHERE document_id = ?', (document_id,))
+            for idx, chunk in enumerate(chunks):
+                self.conn.execute(
+                    'INSERT INTO document_chunks (document_id, owner_user_id, scope, chunk_index, chunk_text) VALUES (?, ?, ?, ?, ?)',
+                    (document_id, owner_user_id, scope, idx, chunk)
+                )
+            self.conn.commit()
+
+        def store_upload(self, user_id, file_name, stored_path, mime_type=None):
+            self.conn.execute(
+                'INSERT INTO uploads (user_id, file_name, stored_path, mime_type) VALUES (?, ?, ?, ?)',
+                (user_id, file_name, stored_path, mime_type)
+            )
+            self.conn.commit()
 
     memory_module = types.ModuleType('memory')
     memory_module.MemoryStore = StubMemoryStore
@@ -203,6 +247,64 @@ class InterfaceInfoSuckerRouteTests(unittest.TestCase):
 
             resume_payload = module.route_infosucker_resume(job_id)
             self.assertEqual(resume_payload['job']['status'], 'running')
+
+    def test_infosucker_import_keeps_multiple_zim_entries_indexed(self):
+        with TemporaryDirectory() as tmp:
+            module = load_interface_module(Path(tmp))
+            zim_path = Path(tmp) / 'sample-mini.zim'
+            zim_path.write_bytes(b'fake-zim')
+
+            class FakeEntry:
+                def __init__(self, full_url, title, body):
+                    self.namespace = 'C'
+                    self.url = full_url[1:]
+                    self.full_url = full_url
+                    self.title = title
+                    self.mimetype = 'text/html'
+                    self.is_redirect = False
+                    self._body = body
+
+                def read(self):
+                    return self._body.encode('utf-8')
+
+            class FakeArchive:
+                def __init__(self, entries):
+                    self.entries = entries
+
+                def get_metadata_dict(self, as_unicode=True):
+                    return {'Language': 'eng'}
+
+                def iter_articles(self):
+                    return iter(self.entries)
+
+                def close(self):
+                    return None
+
+            archive_module = types.ModuleType('pyzim.archive')
+            archive_module.Zim = type('FakeZim', (), {
+                'open': staticmethod(lambda path, mode='r': FakeArchive([
+                    FakeEntry('Cone.html', 'One', '<h1>One</h1>'),
+                    FakeEntry('Ctwo.html', 'Two', '<h1>Two</h1>'),
+                ]))
+            })
+            pyzim_module = types.ModuleType('pyzim')
+            pyzim_module.archive = archive_module
+
+            with unittest.mock.patch.dict(sys.modules, {'pyzim': pyzim_module, 'pyzim.archive': archive_module}):
+                result = module._infosucker_import_file(
+                    {'user_id': 1, 'email': 'user@example.com'},
+                    {'stored_path': str(zim_path), 'file_name': 'sample-mini.zim', 'mime_type': 'application/octet-stream'},
+                    'personal'
+                )
+
+            self.assertEqual(result['indexed_document_count'], 2)
+            rows = module.store.connect().execute(
+                'SELECT stored_path FROM document_index ORDER BY stored_path ASC'
+            ).fetchall()
+            self.assertEqual(
+                [row['stored_path'] for row in rows],
+                [f'{zim_path}#Cone.html', f'{zim_path}#Ctwo.html']
+            )
 
 
 if __name__ == '__main__':
