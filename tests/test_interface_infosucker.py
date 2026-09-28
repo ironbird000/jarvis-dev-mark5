@@ -146,8 +146,9 @@ class InterfaceInfoSuckerRouteTests(unittest.TestCase):
     def test_infosucker_routes_expose_structured_job_payload(self):
         with TemporaryDirectory() as tmp:
             module = load_interface_module(Path(tmp))
+            job_id = '00000000-0000-0000-0000-000000000123'
             expected_job = {
-                'job_id': 'job-123',
+                'job_id': job_id,
                 'source_url': 'https://example.com/index/',
                 'scope': 'personal',
                 'phase': 'validating',
@@ -176,7 +177,7 @@ class InterfaceInfoSuckerRouteTests(unittest.TestCase):
                     return expected_job
 
                 def get_job(self, user, job_id):
-                    return expected_job if job_id == 'job-123' else None
+                    return expected_job if job_id == expected_job['job_id'] else None
 
                 def resume_job(self, user, job_id, download_root):
                     return expected_job
@@ -197,10 +198,10 @@ class InterfaceInfoSuckerRouteTests(unittest.TestCase):
             self.assertEqual(latest_payload['job']['current_batch_number'], 2)
             self.assertEqual(latest_payload['job']['total_estimated_bytes'], 42)
 
-            job_payload = module.route_infosucker_job('job-123')
+            job_payload = module.route_infosucker_job(job_id)
             self.assertEqual(job_payload['job']['validation']['2']['failure_rate'], 0.0)
 
-            resume_payload = module.route_infosucker_resume('job-123')
+            resume_payload = module.route_infosucker_resume(job_id)
             self.assertEqual(resume_payload['job']['status'], 'running')
 
 

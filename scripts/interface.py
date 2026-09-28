@@ -493,17 +493,25 @@ def _index_upload_into_memory(user: dict, file_path: Path, original_name: str, m
     }
 
 
-def _delete_existing_document(stored_path: str):
-    if not stored_path:
+def _delete_existing_document_record(record_path: str):
+    if not record_path:
         return
     with store.connect() as conn:
         rows = conn.execute(
             "SELECT id FROM document_index WHERE stored_path = ?",
-            (stored_path,)
+            (record_path,)
         ).fetchall()
-        for row in rows:
-            conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (row["id"],))
-            conn.execute("DELETE FROM document_index WHERE id = ?", (row["id"],))
+        document_ids = [row["id"] for row in rows]
+        if document_ids:
+            placeholders = ",".join("?" for _ in document_ids)
+            conn.execute(
+                f"DELETE FROM document_chunks WHERE document_id IN ({placeholders})",
+                document_ids,
+            )
+            conn.execute(
+                f"DELETE FROM document_index WHERE id IN ({placeholders})",
+                document_ids,
+            )
         conn.commit()
 
 
@@ -532,7 +540,7 @@ def _infosucker_import_file(user: dict, file_state: dict, scope: str) -> dict:
             if not text:
                 continue
             record_stored_path = record.get("stored_path") or str(stored_path)
-            _delete_existing_document(record_stored_path)
+            _delete_existing_document_record(record_stored_path)
             document_id = store.create_document_index(
                 owner_user_id=user.get("user_id"),
                 file_name=record.get("file_name") or stored_path.name,
@@ -1178,8 +1186,9 @@ def route_infosucker_start():
         return _json_error("A source URL is required.", 400)
     try:
         safe_source_url = validate_safe_url(source_url)
-    except Exception as exc:
-        return _json_error(str(exc), 400)
+    except Exception:
+        logging.exception("Info-Sucker source URL validation failed")
+        return _json_error("Source URL failed validation.", 400)
 
     scope = _normalize_upload_scope(payload.get("scope") or "personal", user)
     job = infosucker_manager.start_job(user, safe_source_url, scope, INFOSUCKER_DOWNLOADS_DIR)

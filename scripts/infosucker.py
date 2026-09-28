@@ -372,15 +372,21 @@ class InfoSuckerJobManager:
         }
 
     def _job_dir(self, user_id: int) -> Path:
-        path = self.base_dir / str(user_id)
+        path = self.base_dir / str(int(user_id))
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def _normalized_job_id(self, job_id: str) -> str:
+        return str(uuid.UUID(str(job_id)))
+
     def _job_path(self, user_id: int, job_id: str) -> Path:
-        return self._job_dir(user_id) / f'{job_id}.json'
+        return self._job_dir(user_id) / f'{self._normalized_job_id(job_id)}.json'
 
     def _load_state(self, user_id: int, job_id: str) -> Optional[Dict[str, object]]:
-        path = self._job_path(user_id, job_id)
+        try:
+            path = self._job_path(user_id, job_id)
+        except (TypeError, ValueError, AttributeError):
+            return None
         if not path.exists():
             return None
         return json.loads(path.read_text(encoding='utf-8'))
@@ -389,6 +395,26 @@ class InfoSuckerJobManager:
         state['updated_at'] = utcnow_iso()
         path = self._job_path(state['user_id'], state['job_id'])
         path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding='utf-8')
+
+    def _future_is_active(self, job_id: str) -> bool:
+        with self._lock:
+            future = self._futures.get(job_id)
+            if future and not future.done():
+                return True
+            if future and future.done():
+                self._futures.pop(job_id, None)
+        return False
+
+    def _get_active_job_for_user(self, user_id: int) -> Optional[Dict[str, object]]:
+        job_dir = self._job_dir(user_id)
+        for path in sorted(job_dir.glob('*.json')):
+            try:
+                state = json.loads(path.read_text(encoding='utf-8'))
+            except Exception:
+                continue
+            if state.get('status') in {'queued', 'running'}:
+                return state
+        return None
 
     def _initial_state(self, user: Dict[str, object], source_url: str, scope: str) -> Dict[str, object]:
         now = utcnow_iso()
@@ -425,6 +451,9 @@ class InfoSuckerJobManager:
         }
 
     def start_job(self, user: Dict[str, object], source_url: str, scope: str, download_root: Path) -> Dict[str, object]:
+        active = self._get_active_job_for_user(int(user['user_id']))
+        if active:
+            return serialize_job_state(active)
         state = self._initial_state(user, source_url, scope)
         self._save_state(state)
         future = self._executor.submit(self._run_job, state['job_id'], user, scope, Path(download_root), False)
@@ -436,6 +465,8 @@ class InfoSuckerJobManager:
         state = self._load_state(int(user['user_id']), job_id)
         if not state:
             return None
+        if state.get('status') in {'queued', 'running'} or self._future_is_active(job_id):
+            return serialize_job_state(state)
         if state.get('status') not in {'paused', 'failed'}:
             return serialize_job_state(state)
         state['status'] = 'queued'
@@ -455,10 +486,24 @@ class InfoSuckerJobManager:
 
     def get_latest_job(self, user: Dict[str, object]) -> Optional[Dict[str, object]]:
         job_dir = self._job_dir(int(user['user_id']))
-        candidates = sorted(job_dir.glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not candidates:
+        states = []
+        for path in job_dir.glob('*.json'):
+            try:
+                state = json.loads(path.read_text(encoding='utf-8'))
+            except Exception:
+                continue
+            states.append(state)
+        if not states:
             return None
-        state = json.loads(candidates[0].read_text(encoding='utf-8'))
+        state = sorted(
+            states,
+            key=lambda item: (
+                item.get('created_at') or '',
+                item.get('started_at') or '',
+                item.get('updated_at') or '',
+            ),
+            reverse=True,
+        )[0]
         return serialize_job_state(state)
 
     def _run_job(self, job_id: str, user: Dict[str, object], scope: str, download_root: Path, resume: bool):
@@ -488,7 +533,7 @@ class InfoSuckerJobManager:
                 batch_number = batch['batch_number']
                 state['current_batch_number'] = batch_number
                 batch['status'] = 'running'
-                download_batch_dir = Path(download_root) / 'infosucker' / state['job_id'] / f'batch_{batch_number:03d}'
+                download_batch_dir = Path(download_root) / state['job_id'] / f'batch_{batch_number:03d}'
                 download_batch_dir.mkdir(parents=True, exist_ok=True)
                 state['phase'] = 'downloading'
                 self._save_state(state)

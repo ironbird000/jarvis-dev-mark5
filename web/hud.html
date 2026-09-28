@@ -980,6 +980,7 @@ let currentActiveBufferSources = [];
 let lastOpenedDocumentPath = '';
 let infosuckerPollTimer = null;
 let currentInfosuckerJobId = '';
+let infosuckerPollInFlight = false;
 const AUDIO_GATE_THRESHOLD = 0.012;
 const AUDIO_GATE_HOLD_TIME = 400;
 let lastVoiceDetectionTimestamp = 0;
@@ -1046,6 +1047,19 @@ async function fetchJsonWithSession(endpoint, options = {}){
     throw error;
   }
   return payload;
+}
+function formatBytes(bytes){
+  const value = Number(bytes || 0);
+  if(!value) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let index = 0;
+  while(size >= 1024 && index < units.length - 1){
+    size /= 1024;
+    index += 1;
+  }
+  const precision = size >= 10 || index === 0 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[index]}`;
 }
 function splitNameParts(name){
   const cleaned = (name || '').trim();
@@ -1999,7 +2013,7 @@ function renderInfosuckerJob(job, message){
   const validation = job.validation && job.current_batch_number ? job.validation[String(job.current_batch_number)] : null;
   const details = [
     `Discovered: ${summary.discovered || 0}`,
-    `Estimated bytes: ${job.total_estimated_bytes || 0}`,
+    `Estimated bytes: ${formatBytes(job.total_estimated_bytes || 0)}`,
     `Batches: ${batchCount || 0}`,
     `Current batch: ${currentBatch || 0}/${batchCount || 0}`,
     `Downloaded: ${summary.downloaded || 0}`,
@@ -2028,15 +2042,18 @@ function renderInfosuckerJob(job, message){
 }
 
 function startInfosuckerPolling(jobId){
-  if(infosuckerPollTimer) clearInterval(infosuckerPollTimer);
+  if(infosuckerPollTimer) clearTimeout(infosuckerPollTimer);
   if(!jobId) return;
-  infosuckerPollTimer = setInterval(async () => {
+  const poll = async () => {
+    if(infosuckerPollInFlight) return;
+    infosuckerPollInFlight = true;
     try{
       const payload = await fetchJsonWithSession(`${INFOSUCKER_JOBS_ENDPOINT}/${encodeURIComponent(jobId)}`);
       renderInfosuckerJob(payload.job);
       if(payload.job && !['queued','running'].includes(payload.job.status)){
-        clearInterval(infosuckerPollTimer);
         infosuckerPollTimer = null;
+        infosuckerPollInFlight = false;
+        return;
       }
     }catch(err){
       const message = err.status === 401
@@ -2046,11 +2063,15 @@ function startInfosuckerPolling(jobId){
       if(infosuckerProgressDetails) infosuckerProgressDetails.textContent = '';
       if(infosuckerProgressBar) infosuckerProgressBar.style.width = '0%';
       if(err.status === 401 && infosuckerPollTimer){
-        clearInterval(infosuckerPollTimer);
         infosuckerPollTimer = null;
+        infosuckerPollInFlight = false;
+        return;
       }
     }
-  }, 2000);
+    infosuckerPollInFlight = false;
+    infosuckerPollTimer = setTimeout(poll, 2000);
+  };
+  poll();
 }
 
 async function loadLatestInfosuckerJob(){

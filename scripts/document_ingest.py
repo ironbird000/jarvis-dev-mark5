@@ -27,8 +27,8 @@ def _decode_bytes(value) -> str:
 
 
 def _strip_html_markup(text: str) -> str:
-    clean = re.sub(r'(?is)<script[^>]*>.*?</script>', ' ', text)
-    clean = re.sub(r'(?is)<style[^>]*>.*?</style>', ' ', clean)
+    clean = re.sub(r'(?is)<script\b[^>]*>.*?</script\b[^>]*>', ' ', text)
+    clean = re.sub(r'(?is)<style\b[^>]*>.*?</style\b[^>]*>', ' ', clean)
     clean = re.sub(r'(?s)<[^>]+>', ' ', clean)
     clean = html.unescape(clean)
     clean = re.sub(r'\s+', ' ', clean)
